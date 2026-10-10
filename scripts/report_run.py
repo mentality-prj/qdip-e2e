@@ -23,7 +23,7 @@ def main():
     token = os.environ["GITHUB_TOKEN"]
     branch = os.environ["E2E_BRANCH"]
     sha = os.environ["E2E_SHA"]
-    statuses_file = Path(os.environ["RUNNER_TEMP"]) / "qdip-stage-results.jsonl"
+    statuses_file = Path(os.environ.get("E2E_PHASES_PATH") or str(Path(os.environ["RUNNER_TEMP"]) / "qdip-stage-results.jsonl"))
     observed = []
     if statuses_file.exists():
         for line in statuses_file.read_text(encoding="utf-8").splitlines():
