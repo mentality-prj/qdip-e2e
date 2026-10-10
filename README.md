@@ -8,7 +8,7 @@ Independent GitHub Actions suite (manual E2E and public-repository SHA polling) 
 
 1. Set **this E2E repository to Public**. The backend can remain private. Scheduled polling is disabled at the job level while this E2E repository is Private.
 2. Configure repository secret `QDIP_READ_TOKEN`: fine-grained token with **Contents: Read-only** on exactly `mentality-prj/dzvin-intelligence-platform` and `mentality-prj/dip-observatory`. Never commit a token, use it as an Actions input, or expose it in logs. This public test repo does not need private source copied into it.
-3. In **Actions → QDIP independent real E2E → Run workflow** choose source refs (defaults: backend `feat/rr-prod-01-normalized-source-import`, Observatory `feat/rr-production-operator-boundary`).
+3. In **Actions → QDIP independent real E2E → Run workflow** choose source refs (defaults: backend `feat/rr-prod-01-normalized-source-import`, Observatory `dev`).
 4. Read the **individual step results** and downloaded sanitized evidence artifact. All tested checkout SHAs are recorded.
 
 The expensive test workflow accepts `workflow_dispatch` and `repository_dispatch` only. A separate lightweight `Watch QDIP Core (no Core Actions)` workflow polls once per hour at minute 17 UTC. Neither workflow runs on E2E repository pushes or PRs. Repository secrets are not available to unauthenticated visitors or ordinary public PRs.
@@ -94,7 +94,7 @@ authentication, not final OIDC; single-node Mongo replica does not
 establish HA or production RTO/RPO.
 
 The Observatory ref in automatic runs is currently the staged
-`feat/rr-production-operator-boundary`; each E2E records its exact
+`dev`; each E2E records its exact
 checkout SHA. Once that frontend changes, update the configured ref in
 `scripts/watch_core.py`. Stage browser operator authentication is not
 production OIDC validation.
