@@ -15,7 +15,7 @@ on:
         description: "Observatory branch or commit SHA"
         type: string
         required: true
-        default: feat/rr-production-operator-boundary
+        default: fix/rr-single-kernel-authority
 
 permissions:
   contents: read
@@ -37,6 +37,7 @@ jobs:
       MONGODB_URL: mongodb://127.0.0.1:27019/qdip_e2e?replicaSet=rrtest&directConnection=true
       RR_TEST_MONGODB_URL: mongodb://127.0.0.1:27019/?replicaSet=rrtest&directConnection=true
       DIP_API_BASE_URL: http://127.0.0.1:8000
+      RR_REFERENCE_OPERATOR_ENABLED: 'true'
     steps:
       - name: Checkout public independent E2E suite
         uses: actions/checkout@v4
@@ -66,7 +67,7 @@ jobs:
       - name: Checkout private QDIP backend at pinned SHA
         uses: actions/checkout@v4
         with:
-          repository: mentality-prj/dzvin-intelligence-platform
+          repository: qdip-ai/qdip-core
           token: ${{ secrets.QDIP_READ_TOKEN }}
           ref: ${{ github.event.client_payload.backend_sha || inputs.backend_ref || 'dev' }}
           path: backend
@@ -75,9 +76,9 @@ jobs:
       - name: Checkout actual Observatory at pinned ref
         uses: actions/checkout@v4
         with:
-          repository: mentality-prj/dip-observatory
+          repository: qdip-ai/qdip-web
           token: ${{ secrets.QDIP_READ_TOKEN }}
-          ref: ${{ github.event.client_payload.observatory_ref || inputs.observatory_ref || 'feat/rr-production-operator-boundary' }}
+          ref: ${{ github.event.client_payload.observatory_ref || inputs.observatory_ref || 'fix/rr-single-kernel-authority' }}
           path: observatory
           persist-credentials: false
 
