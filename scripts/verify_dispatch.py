@@ -8,7 +8,7 @@ from urllib.error import HTTPError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
-REPO = "mentality-prj/dzvin-intelligence-platform"
+REPO = "qdip-ai/qdip-core"
 BRANCHES = {"dev", "feat/rr-prod-01-normalized-source-import"}
 
 def get(path: str, token: str) -> dict:
