@@ -1,0 +1,34 @@
+name: Watch QDIP Core (no Core Actions)
+
+on:
+  schedule:
+    # Poll GitHub refs outside minute 0. Only changes trigger the expensive E2E.
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write  # repository_dispatch on this SAME repository only
+
+concurrency:
+  group: qdip-public-core-watcher
+  cancel-in-progress: true
+
+jobs:
+  poll:
+    # Never allocate a runner while qdip-e2e is private. Public visibility
+    # enables the scheduler without a source-Core Actions job.
+    if: github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Checkout public E2E watcher
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Poll private Core HEADs and dispatch only new eligible SHAs
+        env:
+          QDIP_READ_TOKEN: ${{ secrets.QDIP_READ_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/watch_core.py
