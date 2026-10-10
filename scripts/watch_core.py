@@ -96,9 +96,9 @@ def fingerprint() -> str:
     for name in SUITE_PATHS:
         path = root / name
         digest.update(name.encode())
-        digest.update(b"\\0")
+        digest.update(b"\0")
         digest.update(path.read_bytes())
-        digest.update(b"\\0")
+        digest.update(b"\0")
     return digest.hexdigest()
 
 
@@ -117,7 +117,7 @@ def read_ledger(token: str) -> tuple[dict, str | None]:
 def write_ledger(data: dict, existing_sha: str | None, token: str) -> None:
     payload = {"message": "ci(e2e): persist observed source SHAs and test attempts",
                "branch": "main",
-               "content": base64.b64encode((json.dumps(data, sort_keys=True, indent=2) + "\\n").encode()).decode()}
+               "content": base64.b64encode((json.dumps(data, sort_keys=True, indent=2) + "\n").encode()).decode()}
     if existing_sha:
         payload["sha"] = existing_sha
     api(f"/repos/{TARGET}/contents/{quote(LEDGER, safe='/')}", token, body=payload, method="PUT")
