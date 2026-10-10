@@ -15,7 +15,7 @@ on:
         description: "Observatory branch or commit SHA"
         type: string
         required: true
-        default: fix/rr-single-kernel-authority
+        default: dev
 
 permissions:
   contents: read
@@ -78,7 +78,7 @@ jobs:
         with:
           repository: qdip-ai/qdip-web
           token: ${{ secrets.QDIP_READ_TOKEN }}
-          ref: ${{ github.event.client_payload.observatory_ref || inputs.observatory_ref || 'fix/rr-single-kernel-authority' }}
+          ref: ${{ github.event.client_payload.observatory_ref || inputs.observatory_ref || 'dev' }}
           path: observatory
           persist-credentials: false
 
