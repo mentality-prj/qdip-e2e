@@ -1,0 +1,181 @@
+name: QDIP independent real E2E
+
+on:
+  workflow_dispatch:
+    inputs:
+      backend_ref:
+        description: "Branch or SHA of dzvin-intelligence-platform"
+        required: true
+        default: "feat/rr-prod-01-normalized-source-import"
+        type: string
+      observatory_ref:
+        description: "Branch or SHA of dip-observatory"
+        required: true
+        default: "feat/rr-production-operator-boundary"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qdip-real-e2e
+  cancel-in-progress: false
+
+jobs:
+  real-rr:
+    name: Real MongoDB + FastAPI + HTTP + browser
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    env:
+      PYTHONUNBUFFERED: "1"
+      MONGODB_URL: "mongodb://127.0.0.1:27019/qdip_e2e?replicaSet=rrtest&directConnection=true"
+      RR_TEST_MONGODB_URL: "mongodb://127.0.0.1:27019/?replicaSet=rrtest&directConnection=true"
+      NEXT_TELEMETRY_DISABLED: "1"
+      DIP_API_BASE_URL: "http://127.0.0.1:8000"
+      RR_E2E_API_REQUEST_PATH: "${{ runner.temp }}/rr-reference-request.json"
+    steps:
+      - name: Checkout independent E2E suite
+        uses: actions/checkout@v4
+        with:
+          path: suite
+          persist-credentials: false
+
+      - name: Require read-only access to private source repositories
+        shell: bash
+        env:
+          CROSS_REPO_TOKEN: ${{ secrets.QDIP_READ_TOKEN }}
+        run: |
+          if [[ -z "$CROSS_REPO_TOKEN" ]]; then
+            echo 'Missing QDIP_READ_TOKEN. Grant Contents:read on BOTH source repositories.' >&2
+            exit 2
+          fi
+
+      - name: Checkout real QDIP backend
+        uses: actions/checkout@v4
+        with:
+          repository: mentality-prj/dzvin-intelligence-platform
+          token: ${{ secrets.QDIP_READ_TOKEN }}
+          ref: ${{ inputs.backend_ref }}
+          path: backend
+          persist-credentials: false
+
+      - name: Checkout actual Observatory frontend
+        uses: actions/checkout@v4
+        with:
+          repository: mentality-prj/dip-observatory
+          token: ${{ secrets.QDIP_READ_TOKEN }}
+          ref: ${{ inputs.observatory_ref }}
+          path: observatory
+          persist-credentials: false
+
+      - name: Record exact tested revisions
+        shell: bash
+        run: |
+          mkdir -p suite/reports
+          printf 'QDIP_BACKEND_SHA=%s\n' "$(git -C backend rev-parse HEAD)" | tee suite/reports/commits.txt
+          printf 'QDIP_OBSERVATORY_SHA=%s\n' "$(git -C observatory rev-parse HEAD)" | tee -a suite/reports/commits.txt
+          printf 'QDIP_E2E_SUITE_SHA=%s\n' "$(git -C suite rev-parse HEAD)" | tee -a suite/reports/commits.txt
+
+      - name: Setup Python 3.12 and Node 22
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.22.0
+          run_install: false
+
+      - name: Install MongoDB 8.0 directly on runner (no Docker)
+        shell: bash
+        run: bash suite/scripts/install_mongo_native.sh
+
+      - name: Install backend and start real MongoDB replica set
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e './backend[dev]'
+          bash suite/scripts/start_mongo_native.sh
+
+      - name: Real MongoDB transaction/CAS tests (no mocks)
+        shell: bash
+        working-directory: backend
+        run: python -m pytest -q tests/plugins/readiness_recovery/test_mongo_integration.py
+
+      - name: Real backup → delete → restore → audit/lineage
+        shell: bash
+        working-directory: backend
+        run: bash ../suite/scripts/restore_rr_native.sh
+
+      - name: Provision two real isolated organizations and random test credentials
+        shell: bash
+        run: python suite/scripts/provision_tenants.py
+
+      - name: Start real FastAPI server
+        shell: bash
+        run: |
+          (cd backend && python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 \
+            > "$RUNNER_TEMP/qdip-fastapi.log" 2>&1) &
+          echo $! > "$RUNNER_TEMP/qdip-fastapi.pid"
+          curl --fail --silent --show-error --retry 40 --retry-delay 1 --retry-connrefused \
+            http://127.0.0.1:8000/health
+
+      - name: Real HTTP → FastAPI → Kernel → Mongo → audit/replay
+        shell: bash
+        working-directory: backend
+        run: python ../suite/scripts/http_rr_e2e.py
+
+      - name: Install/build actual Observatory and Chromium
+        shell: bash
+        working-directory: observatory
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm lint
+          pnpm typecheck
+          pnpm test
+          pnpm build
+          pnpm exec playwright install --with-deps chromium
+
+      - name: Start independently installed Python SDK Worker (WebSocket)
+        shell: bash
+        run: bash suite/scripts/start_remote_worker.sh
+
+      - name: Real Remote SDK → WebSocket → FastAPI → Kernel
+        shell: bash
+        run: python suite/scripts/http_sdk_e2e.py
+
+      - name: Real Playwright Chromium → Observatory → FastAPI → MongoDB
+        shell: bash
+        working-directory: observatory
+        run: |
+          echo '127.0.0.1 observatory.localhost' | sudo tee -a /etc/hosts
+          test -n "$RR_E2E_OPERATOR_PASSWORD"
+          test -s "$RR_E2E_API_REQUEST_PATH"
+          pnpm exec playwright test e2e/rr-production-operator.spec.ts \
+            --project=chromium --workers=1 --retries=0 --reporter=list --forbid-only
+
+      - name: Summary (not a claim of production qualification)
+        shell: bash
+        run: |
+          echo 'RR_REAL_MONGO_TRANSACTIONS=PASS'
+          echo 'RR_REAL_MONGO_BACKUP_RESTORE=PASS'
+          echo 'RR_REAL_HTTP_BACKEND_E2E=PASS'
+          echo 'RR_REAL_OBSERVATORY_BROWSER_E2E=PASS (staged password mode, NOT OIDC)'
+          echo 'SDK02_REAL_REMOTE_WORKER_E2E=PASS (local runner, NOT Internet SLA)'
+          echo 'RR_OIDC_FINAL_AUTH=NOT_IMPLEMENTED'
+          echo 'RR_PRODUCTION_SECURITY_SLA=NOT_QUALIFIED'
+          echo 'RR_PRODUCT_VERDICT=NOT_QUALIFIED_PENDING_INDEPENDENT_REVIEW'
+
+      - name: Upload sanitized evidence and exact source SHAs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qdip-real-e2e-evidence
+          path: |
+            suite/reports/commits.txt
+            suite/reports/http-e2e-summary.json
+            suite/reports/sdk-e2e-summary.json
+          if-no-files-found: warn
+          retention-days: 7
