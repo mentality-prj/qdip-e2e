@@ -22,6 +22,7 @@ python suite/scripts/safe_stage.py --timeout 120 backend-restart -- \
   python ../suite/scripts/safe_stage.py --timeout 120 backend-restart-verify -- \
     python ../suite/scripts/check_fastapi_restart.py
 )
+python suite/scripts/safe_stage.py --timeout 70 rr-auth-revocation -- python suite/scripts/check_revocation.py
 (
   cd observatory
   python ../suite/scripts/safe_stage.py --timeout 700 observatory-install -- pnpm install --frozen-lockfile
@@ -33,6 +34,7 @@ python suite/scripts/safe_stage.py --timeout 120 backend-restart -- \
 )
 python suite/scripts/safe_stage.py --timeout 180 sdk-install -- bash suite/scripts/start_remote_worker.sh
 python suite/scripts/safe_stage.py --timeout 180 sdk-e2e -- python suite/scripts/http_sdk_e2e.py
+python suite/scripts/safe_stage.py --timeout 80 sdk-negative -- python suite/scripts/check_remote_worker_failure.py
 echo '127.0.0.1 observatory.localhost' | sudo tee -a /etc/hosts >/dev/null
 test -s "$RR_E2E_API_REQUEST_PATH"
 (
