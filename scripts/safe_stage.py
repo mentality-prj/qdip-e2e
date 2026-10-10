@@ -6,6 +6,7 @@ directory and is NEVER uploaded. Prints only an allowlisted stage status.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -61,6 +62,9 @@ def main() -> int:
                 Path(args.output).write_bytes(path.read_bytes())
         except OSError:
             status = "INFRA_FAIL"
+    # Separate sanitized phase ledger for final TEST_FAIL vs INFRA_FAIL status.
+    with (Path(temp) / "qdip-stage-results.jsonl").open("a", encoding="utf-8") as out:
+        out.write(json.dumps({"stage": args.stage, "status": status}) + chr(10))
     print(f"QDIP_STAGE_{args.stage.upper().replace('-', '_')}={status}")
     return 0 if status == "PASS" else 1
 
