@@ -1,6 +1,8 @@
 name: QDIP independent real E2E
 
 on:
+  repository_dispatch:
+    types: [qdip-core-updated]
   workflow_dispatch:
     inputs:
       backend_ref:
@@ -18,8 +20,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: qdip-real-e2e
-  cancel-in-progress: false
+  # New pushes supersede older auto-run SHAs, manual runs stay independent.
+  group: qdip-real-e2e-${{ github.event_name }}
+  cancel-in-progress: true
 
 jobs:
   real-rr:
@@ -50,12 +53,26 @@ jobs:
             exit 2
           fi
 
+      - name: Validate exact commit for automatic cross-repository trigger
+        if: github.event_name == 'repository_dispatch'
+        shell: bash
+        env:
+          SOURCE_REPO: ${{ github.event.client_payload.repository }}
+          SOURCE_SHA: ${{ github.event.client_payload.backend_sha }}
+          SOURCE_REF: ${{ github.event.client_payload.backend_branch }}
+        run: |
+          [[ "$SOURCE_REPO" == "mentality-prj/dzvin-intelligence-platform" ]] || exit 2
+          [[ "$SOURCE_SHA" =~ ^[a-f0-9]{40}$ ]] || exit 2
+          [[ "$SOURCE_REF" == "dev" || "$SOURCE_REF" == "feat/rr-prod-01-normalized-source-import" ]] || exit 2
+          echo "E2E_BACKEND_TRIGGER_SHA=$SOURCE_SHA"
+          echo "E2E_SOURCE_BRANCH=$SOURCE_REF"
+
       - name: Checkout real QDIP backend
         uses: actions/checkout@v4
         with:
           repository: mentality-prj/dzvin-intelligence-platform
           token: ${{ secrets.QDIP_READ_TOKEN }}
-          ref: ${{ inputs.backend_ref }}
+          ref: ${{ github.event.client_payload.backend_sha || inputs.backend_ref || 'dev' }}
           path: backend
           persist-credentials: false
 
@@ -64,7 +81,7 @@ jobs:
         with:
           repository: mentality-prj/dip-observatory
           token: ${{ secrets.QDIP_READ_TOKEN }}
-          ref: ${{ inputs.observatory_ref }}
+          ref: ${{ github.event.client_payload.observatory_ref || inputs.observatory_ref || 'feat/rr-production-operator-boundary' }}
           path: observatory
           persist-credentials: false
 
