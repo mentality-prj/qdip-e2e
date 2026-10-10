@@ -7,7 +7,7 @@ from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-URL = "https://api.github.com/repos/mentality-prj/qdip-e2e/contents/.state/core-watch.json"
+URL = "https://api.github.com/repos/qdip-ai/qdip-e2e/contents/.state/core-watch.json"
 
 
 def exchange(method, token, payload=None):
