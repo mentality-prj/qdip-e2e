@@ -28,15 +28,19 @@ the required RR reference proof are deferred until ready.
 
 For an eligible new SHA, the watcher dispatches `qdip-core-updated` with
 the **immutable Core SHA**. `real-e2e.yml` runs tests only in this E2E
-repository. It uploads a small `qdip-e2e-attempt-<SHA>` artifact after any
-completed run (even failed tests). The watcher checks artifact existence so
-no unmodified commit causes repeat costly E2E runs; failures require an
-explicit manual rerun or a new commit. Artifacts expire after 30 days, at
-which point a repeat run is possible.
+repository. The watcher records each observed source commit, Observatory ref and E2E test-suite
+fingerprint in the durable `.state/core-watch.json` ledger in this **E2E
+repository**. Docs-only changes advance the observed head without triggering
+the expensive test. A new source commit or changed test-suite code produces
+a new qualification identity. The terminal E2E result records
+`PASS`, `TEST_FAIL`, or `INFRA_FAIL` with the run ID. Failures are
+not silently converted to PASS or retried indefinitely; manual reruns are
+available. A stalled dispatch has one bounded retry after six hours.
 
-**Runner-cost guard:** `watch-core.yml` uses
-`if: github.event.repository.private == false`. When the E2E repository
-reports Private, scheduled runs allocate no runner. **GitHub currently
+**Runner-cost guard:** both `watch-core.yml` AND
+`real-e2e.yml` use `if: github.event.repository.private == false`.
+When the E2E repository reports Private, neither scheduled nor manually
+started E2E jobs allocate a runner. **GitHub currently
 reports this repository as private**, so change its visibility to Public
 under `Settings → General → Danger Zone → Change repository visibility`.
 The API connector does not expose the visibility-changing operation.
@@ -59,6 +63,20 @@ cannot be performed with this connector.
 GitHub may delay scheduled jobs, and scheduled workflows can be disabled
 after long inactivity in public repositories. The watcher provides
 eventual detection, not instant on-push delivery.
+
+Public-repository logs are deliberately sanitized: private Core/Observatory
+build commands, pytest, and Playwright subprocesses write raw output only
+under the ephemeral runner's `RUNNER_TEMP`. Raw logs and Playwright JSON
+results are NOT uploaded as artifacts. Public evidence contains only commit
+SHAs and explicitly bounded outcome summaries. This prevents accidental
+traceback/source exposure but means detailed private diagnostics require a
+separately authorized restricted debugging process. Do not enable raw debug
+logging on public runs.
+
+The real-service test now includes independent versioned civilian input JSON
+(`fixtures/rr_reference_api_v1.json`) instead of importing a Core-owned
+fixture, actual FastAPI restart with retained MongoDB state, and fail-closed
+browser coverage (3 expected tests, zero skipped).
 
 The Observatory ref in automatic runs is currently the staged
 `feat/rr-production-operator-boundary`; each E2E records its exact
