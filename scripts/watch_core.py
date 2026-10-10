@@ -1,127 +1,191 @@
-"""Observe private QDIP Git commits from the E2E repository, never from Core CI.
+"""Independent public E2E watcher: compare private Core refs, then dispatch exactly once.
 
-Runs only in qdip-e2e GitHub Actions. Sends repository_dispatch for eligible new
-commits; completed attempt markers suppress repeated costly runs. This is not
-a security/production qualification of the source commits.
+Durable state lives as JSON in THIS public E2E repository, never the private Core.
+No action is run in Core. Manual reruns remain available for failed tests.
 """
-
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import os
 import re
 import sys
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 API = "https://api.github.com"
 CORE = "mentality-prj/dzvin-intelligence-platform"
+OBS = "mentality-prj/dip-observatory"
 TARGET = "mentality-prj/qdip-e2e"
 BRANCHES = ("feat/rr-prod-01-normalized-source-import", "dev")
-REQUIRED_REF_PROOF = "app/plugins/readiness_recovery/reference_proof.py"
-EVENT_TYPE = "qdip-core-updated"
+OBS_BRANCH = "feat/rr-production-operator-boundary"
+LEDGER = ".state/core-watch.json"
+RR_CONTRACT = "app/plugins/readiness_recovery/reference_proof.py"
+SOURCE_PREFIXES = ("app/", "tests/", "packages/", "examples/", "scripts/")
+SOURCE_NAMES = {"pyproject.toml", "uv.lock", "poetry.lock", "requirements.txt"}
+SUITE_PATHS = (
+    ".github/workflows/real-e2e.yml",
+    "scripts/http_rr_e2e.py",
+    "scripts/http_sdk_e2e.py",
+    "scripts/provision_tenants.py",
+    "scripts/safe_stage.py",
+    "scripts/verify_dispatch.py",
+    "fixtures/rr_reference_api_v1.json",
+)
 
 
-def github_request(path: str, token: str, *, payload: dict[str, object] | None = None) -> dict[str, object]:
-    data = None if payload is None else json.dumps(payload).encode("utf-8")
-    request = Request(
-        API + path,
-        data=data,
-        headers={
-            "Accept": "application/vnd.github+json",
-            "Authorization": f"Bearer {token}",
-            "X-GitHub-Api-Version": "2022-11-28",
-            "User-Agent": "qdip-independent-e2e-poller",
-            **({"Content-Type": "application/json"} if data is not None else {}),
-        },
-        method="POST" if data is not None else "GET",
-    )
+def api(path: str, token: str, *, body: dict | None = None, method: str | None = None) -> dict:
+    raw = json.dumps(body, separators=(",", ":")).encode() if body is not None else None
+    request = Request(API + path, data=raw, method=method or ("POST" if raw is not None else "GET"),
+                      headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
+                               "Content-Type": "application/json", "X-GitHub-Api-Version": "2022-11-28",
+                               "User-Agent": "qdip-independent-poller"})
     try:
         with urlopen(request, timeout=20) as response:
-            if response.status not in (200, 201, 204):
-                raise RuntimeError(f"GitHub API unexpected HTTP {response.status}")
-            raw = response.read()
-            return json.loads(raw) if raw else {}
-    except HTTPError as error:
-        if error.code == 404:
-            raise FileNotFoundError("Requested private repository resource not found") from None
-        raise RuntimeError(f"GitHub API HTTP {error.code} when accessing {path.split('?')[0]}") from None
-    except URLError as error:
-        raise RuntimeError("GitHub API unreachable") from error
+            result = response.read()
+            return json.loads(result) if result else {}
+    except HTTPError as exc:
+        if exc.code == 404:
+            raise FileNotFoundError("GitHub resource not found") from None
+        raise RuntimeError(f"GitHub API failed HTTP {exc.code}") from None
+    except URLError:
+        raise RuntimeError("GitHub API unavailable") from None
 
 
-def branch_head(branch: str, token: str) -> str:
-    ref = quote(f"heads/{branch}", safe="/")
-    response = github_request(f"/repos/{CORE}/git/ref/{ref}", token)
-    obj = response.get("object")
-    sha = obj.get("sha") if isinstance(obj, dict) else None
-    if not isinstance(sha, str) or not re.fullmatch("[0-9a-f]{40}", sha):
-        raise RuntimeError("Unexpected source ref SHA")
+def head(repo: str, branch: str, token: str) -> str:
+    result = api(f"/repos/{repo}/git/ref/heads/{quote(branch, safe='/')}", token)
+    sha = result.get("object", {}).get("sha")
+    if not isinstance(sha, str) or not re.fullmatch("[a-f0-9]{40}", sha):
+        raise RuntimeError("Invalid branch SHA")
     return sha
 
 
-def is_supported_build(sha: str, token: str) -> bool:
-    path = quote(REQUIRED_REF_PROOF, safe="/")
+def supported(sha: str, token: str) -> bool:
     try:
-        result = github_request(f"/repos/{CORE}/contents/{path}?ref={sha}", token)
+        item = api(f"/repos/{CORE}/contents/{RR_CONTRACT}?ref={sha}", token)
+        return item.get("type") == "file"
     except FileNotFoundError:
         return False
-    return result.get("type") == "file"
 
 
-def already_attempted(sha: str, token: str) -> bool:
-    name = f"qdip-e2e-attempt-{sha}"
-    response = github_request(
-        f"/repos/{TARGET}/actions/artifacts?per_page=10&name={name}",
-        token,
-    )
-    artifacts = response.get("artifacts", [])
-    if not isinstance(artifacts, list):
-        raise RuntimeError("Malformed GitHub Actions artifacts list")
-    return any(isinstance(item, dict) and item.get("name") == name and not item.get("expired") for item in artifacts)
+def relevant_changes(previous: str | None, current: str, token: str) -> bool:
+    if not previous or previous == current:
+        return previous is None
+    try:
+        compare = api(f"/repos/{CORE}/compare/{previous}...{current}", token)
+    except FileNotFoundError:
+        return True  # force-pushed history: fail open for TEST scheduling
+    if compare.get("status") != "ahead":
+        return True
+    files = compare.get("files", [])
+    if compare.get("total_commits", 0) > 200 or len(files) >= 300:
+        return True  # GitHub diff truncation must not hide source changes
+    return any(isinstance(f, dict) and (
+        str(f.get("filename", "")).startswith(SOURCE_PREFIXES)
+        or f.get("filename") in SOURCE_NAMES
+    ) for f in files)
+
+
+def fingerprint() -> str:
+    digest = hashlib.sha256()
+    root = Path(__file__).resolve().parents[1]
+    for name in SUITE_PATHS:
+        path = root / name
+        digest.update(name.encode())
+        digest.update(b"\\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\\0")
+    return digest.hexdigest()
+
+
+def read_ledger(token: str) -> tuple[dict, str | None]:
+    try:
+        result = api(f"/repos/{TARGET}/contents/{quote(LEDGER, safe='/')}?ref=main", token)
+    except FileNotFoundError:
+        return {"version": 1, "branches": {}}, None
+    decoded = base64.b64decode(str(result["content"]))
+    data = json.loads(decoded)
+    if data.get("version") != 1 or not isinstance(data.get("branches"), dict):
+        raise RuntimeError("Unsupported E2E ledger version")
+    return data, result["sha"]
+
+
+def write_ledger(data: dict, existing_sha: str | None, token: str) -> None:
+    payload = {"message": "ci(e2e): persist observed source SHAs and test attempts",
+               "branch": "main",
+               "content": base64.b64encode((json.dumps(data, sort_keys=True, indent=2) + "\\n").encode()).decode()}
+    if existing_sha:
+        payload["sha"] = existing_sha
+    api(f"/repos/{TARGET}/contents/{quote(LEDGER, safe='/')}", token, body=payload, method="PUT")
 
 
 def dispatch(branch: str, sha: str, token: str) -> None:
-    github_request(
-        f"/repos/{TARGET}/dispatches",
-        token,
-        payload={
-            "event_type": EVENT_TYPE,
-            "client_payload": {
-                "repository": CORE,
-                "backend_sha": sha,
-                "backend_branch": branch,
-                "observatory_ref": "feat/rr-production-operator-boundary",
-            },
-        },
-    )
+    api(f"/repos/{TARGET}/dispatches", token,
+        body={"event_type": "qdip-core-updated",
+              "client_payload": {"repository": CORE, "backend_sha": sha, "backend_branch": branch,
+                                 "observatory_ref": OBS_BRANCH}})
 
 
 def main() -> int:
     if os.environ.get("GITHUB_ACTIONS") != "true" or os.environ.get("GITHUB_REPOSITORY") != TARGET:
-        print("QDIP_E2E_WATCH=REJECTED_WRONG_ENVIRONMENT", file=sys.stderr)
         return 2
-    source_token = os.environ.get("QDIP_READ_TOKEN", "")
-    target_token = os.environ.get("GITHUB_TOKEN", "")
-    if not source_token or not target_token:
-        print("QDIP_E2E_WATCH=MISSING_READ_OR_DISPATCH_TOKEN", file=sys.stderr)
+    source, target = os.environ.get("QDIP_READ_TOKEN"), os.environ.get("GITHUB_TOKEN")
+    if not source or not target:
+        print("QDIP_E2E_WATCH=MISSING_CREDENTIALS", file=sys.stderr)
         return 2
-    dispatched = set()
+    observed_suite = fingerprint()
+    obs_sha = head(OBS, OBS_BRANCH, source)
+    data, etag = read_ledger(target)
+    updated = False
+    now = datetime.now(UTC)
     for branch in BRANCHES:
-        sha = branch_head(branch, source_token)
-        # Do not run pre-RR dev branches lacking the tested reference contract.
-        if not is_supported_build(sha, source_token):
-            print(f"QDIP_E2E_WATCH_UNSUPPORTED_BRANCH={branch}")
+        sha = head(CORE, branch, source)
+        prior = data["branches"].get(branch, {})
+        previous_sha = prior.get("seen_sha")
+        attempt = prior.get("last_attempt", {})
+        key = hashlib.sha256(f"{sha}:{obs_sha}:{observed_suite}".encode()).hexdigest()
+        if not supported(sha, source):
+            data["branches"][branch] = {**prior, "seen_sha": sha, "status": "UNSUPPORTED_RR"}
+            updated = True
+            print(f"QDIP_WATCH_UNSUPPORTED={branch}")
             continue
-        if sha in dispatched or already_attempted(sha, target_token):
-            print(f"QDIP_E2E_WATCH_UNCHANGED={branch}@{sha}")
+        if attempt.get("key") == key:
+            status = attempt.get("status")
+            if status in {"PASS", "TEST_FAIL", "INFRA_FAIL"}:
+                print(f"QDIP_WATCH_ALREADY_RECORDED={branch}:{status}")
+                continue
+            if status == "DISPATCHED":
+                sent = datetime.fromisoformat(attempt["requested_at"])
+                if now - sent < timedelta(hours=6):
+                    print(f"QDIP_WATCH_RUNNING={branch}")
+                    continue
+                if attempt.get("count", 1) >= 2:
+                    attempt["status"] = "INFRA_FAIL"
+                    data["branches"][branch] = {**prior, "last_attempt": attempt}
+                    updated = True
+                    print(f"QDIP_WATCH_INFRA_STALE={branch}")
+                    continue
+        elif previous_sha != sha and not relevant_changes(previous_sha, sha, source):
+            data["branches"][branch] = {**prior, "seen_sha": sha, "status": "SKIPPED_UNRELATED"}
+            updated = True
+            print(f"QDIP_WATCH_UNRELATED={branch}")
             continue
-        dispatch(branch, sha, target_token)
-        dispatched.add(sha)
-        print(f"QDIP_E2E_WATCH_DISPATCHED={branch}@{sha}")
-    if not dispatched:
-        print("QDIP_E2E_WATCH=NO_NEW_BUILD")
+        dispatch(branch, sha, target)
+        count = int(attempt.get("count", 0)) + 1 if attempt.get("key") == key else 1
+        data["branches"][branch] = {"seen_sha": sha, "status": "DISPATCHED",
+                                   "last_attempt": {"key": key, "backend_sha": sha, "obs_sha": obs_sha,
+                                                    "suite_fingerprint": observed_suite, "status": "DISPATCHED",
+                                                    "count": count, "requested_at": now.isoformat()}}
+        updated = True
+        print(f"QDIP_WATCH_DISPATCHED={branch}")
+    if updated:
+        write_ledger(data, etag, target)
+    else:
+        print("QDIP_WATCH_NO_NEW_WORK")
     return 0
 
 
