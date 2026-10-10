@@ -42,5 +42,5 @@ test -s "$RR_E2E_API_REQUEST_PATH"
     pnpm exec playwright test e2e/rr-production-operator.spec.ts \
       --project=chromium --workers=1 --retries=0 --reporter=json --forbid-only
 )
-python suite/scripts/check_browser_report.py
+python suite/scripts/safe_stage.py --timeout 40 test-report -- python suite/scripts/check_browser_report.py
 echo 'QDIP_REAL_NATIVE_E2E=PASS (not production qualification)'
