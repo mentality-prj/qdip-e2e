@@ -1,0 +1,142 @@
+{
+  "execution_id": "PLACEHOLDER",
+  "source": {
+    "source_system": "rr-civilian-workshop-example",
+    "snapshot_id": "PLACEHOLDER",
+    "source_version": "v1",
+    "captured_at": "PLACEHOLDER"
+  },
+  "ingested_at": "PLACEHOLDER",
+  "payload": {
+    "decision_id": "PLACEHOLDER",
+    "horizon_slots": 6,
+    "workshop_capacity": 2,
+    "technicians": [
+      {
+        "id": "service-tech-a",
+        "skills": [
+          "electrical",
+          "mechanical"
+        ],
+        "available_slots": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ]
+      },
+      {
+        "id": "service-tech-b",
+        "skills": [
+          "mechanical"
+        ],
+        "available_slots": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ]
+      },
+      {
+        "id": "service-tech-c",
+        "skills": [
+          "diagnostics",
+          "electrical"
+        ],
+        "available_slots": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ]
+      }
+    ],
+    "jobs": [
+      {
+        "id": "diagnostic-check",
+        "duration_slots": 1,
+        "required_skills": [
+          "diagnostics"
+        ],
+        "deadline_slot": 3,
+        "readiness_gain_units": 4,
+        "execution_cost_units": 1
+      },
+      {
+        "id": "filter-replacement",
+        "duration_slots": 1,
+        "required_skills": [
+          "mechanical"
+        ],
+        "parts": [
+          {
+            "part_id": "filter",
+            "quantity": 1
+          }
+        ],
+        "dependencies": [
+          "diagnostic-check"
+        ],
+        "deadline_slot": 5,
+        "readiness_gain_units": 10,
+        "execution_cost_units": 2
+      },
+      {
+        "id": "safety-cable-check",
+        "duration_slots": 1,
+        "required_skills": [
+          "electrical"
+        ],
+        "deadline_slot": 4,
+        "readiness_gain_units": 12,
+        "execution_cost_units": 2
+      },
+      {
+        "id": "sensor-service",
+        "duration_slots": 2,
+        "required_skills": [
+          "electrical"
+        ],
+        "dependencies": [
+          "safety-cable-check"
+        ],
+        "parts": [
+          {
+            "part_id": "sensor-fuse",
+            "quantity": 1
+          }
+        ],
+        "deadline_slot": 6,
+        "readiness_gain_units": 16,
+        "execution_cost_units": 3,
+        "success_probability_bps": 9000,
+        "failure_penalty_units": 2
+      }
+    ],
+    "inventory": [
+      {
+        "part_id": "filter",
+        "quantity": 2
+      }
+    ],
+    "donors": [
+      {
+        "id": "spare-sensor-kit",
+        "parts": [
+          {
+            "part_id": "sensor-fuse",
+            "quantity": 1
+          }
+        ],
+        "cost_units": 2,
+        "readiness_penalty_units": 1
+      }
+    ]
+  }
+}
