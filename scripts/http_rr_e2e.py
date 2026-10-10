@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 import os
 import secrets
 from datetime import UTC, datetime, timedelta
@@ -83,6 +84,37 @@ def main() -> None:
         assert exported["head_execution_id"] == revised_id
         other_hist = expect_status(request(client, "GET", f"/decisions/{decision_id}/history", org_b), 200)
         assert other_hist["executions"] == []
+        # Separate real-Mongo CAS race: exactly one concurrent successor may commit.
+        race_initial = json.loads(json.dumps(initial))
+        race_initial["execution_id"] = f"rr-e2e-{run_id}-race-base"
+        race_initial["payload"]["decision_id"] = f"civilian-race-{run_id}"
+        race_initial["source"]["snapshot_id"] = f"race-snapshot-{run_id}"
+        expect_status(request(client, "POST", "/executions", org_a, json=race_initial), 201)
+
+        def competing(index: int) -> int:
+            changed = {
+                "execution_id": f"rr-e2e-{run_id}-race-{index}",
+                "change_id": f"race-change-{run_id}-{index}",
+                "kind": "OVERRIDE",
+                "reason": "Concurrent synthetic modification: test real head CAS.",
+                "requested_at": (now + timedelta(seconds=5)).isoformat(),
+                "source": race_initial["source"],
+                "ingested_at": (now + timedelta(seconds=5)).isoformat(),
+                "payload": {**race_initial["payload"],
+                            "operator_directives": {"excluded_job_ids": ["sensor-service"]}},
+            }
+            with httpx.Client(timeout=60) as parallel_client:
+                return request(parallel_client, "POST",
+                               f"/executions/{race_initial['execution_id']}/replan",
+                               org_a, json=changed).status_code
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            outcomes = sorted(pool.map(competing, (1, 2)))
+        assert outcomes == [201, 409], "Concurrent replans did not enforce one decision head"
+        raced = expect_status(request(client, "GET",
+                            f"/decisions/{race_initial['payload']['decision_id']}/history",
+                            org_a), 200)
+        assert len(raced["executions"]) == 2
         state_path = Path(os.environ["RUNNER_TEMP"]) / "qdip-rr-e2e-state.json"
         state_path.write_text(json.dumps({"original_id": original_id, "revised_id": revised_id, "decision_id": decision_id}), encoding="utf-8")
 
@@ -93,6 +125,7 @@ def main() -> None:
         "kernel_authoritative_result": "OPTIMAL/EXACT",
         "create_replan_history_integrity_export_replay": "PASS",
         "retry_idempotence": "PASS",
+        "real_concurrent_replan_head_cas": "PASS",
         "negative_auth_cross_tenant": "PASS",
         "oidc": "NOT_TESTED",
         "public_security_sla": "NOT_QUALIFIED",
