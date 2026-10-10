@@ -31,7 +31,7 @@ def main():
     failing = next((x["stage"] for x in observed if x["status"] != "PASS"), None)
     expected_test_stages = {
         "mongodb-integration", "mongodb-recovery", "backend-http",
-        "backend-restart-verify", "observatory-unit", "sdk-e2e", "browser-e2e",
+        "backend-restart-verify", "observatory-unit", "sdk-e2e", "browser-e2e", "test-report",
     }
     terminal = ("PASS" if os.environ.get("E2E_JOB_STATUS") == "success" else
                 "TEST_FAIL" if failing in expected_test_stages else "INFRA_FAIL")
