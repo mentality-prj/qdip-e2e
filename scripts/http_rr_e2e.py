@@ -8,7 +8,6 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
-from app.plugins.readiness_recovery.reference_fixture import build_reference_import
 
 ROOT = "http://127.0.0.1:8000/api/v1/readiness-recovery"
 
@@ -33,12 +32,14 @@ def main() -> None:
     fixture_path = Path(os.environ["RR_E2E_API_REQUEST_PATH"])
     run_id = secrets.token_hex(7)
     now = datetime.now(UTC)
-    initial = build_reference_import(captured_at=now).to_api_request()
+    initial = json.loads((Path(__file__).resolve().parents[1] / "fixtures" / "rr_reference_api_v1.json").read_text(encoding="utf-8"))
     original_id = f"rr-e2e-{run_id}-01"
     revised_id = f"rr-e2e-{run_id}-02"
     decision_id = f"civilian-e2e-{run_id}"
     initial["execution_id"] = original_id
     initial["source"]["snapshot_id"] = f"e2e-snapshot-{run_id}"
+    initial["source"]["captured_at"] = now.isoformat()
+    initial["ingested_at"] = now.isoformat()
     initial["payload"]["decision_id"] = decision_id
     # Browser test uses its own unique ID.
     fixture_path.write_text(json.dumps(initial, indent=2), encoding="utf-8")
@@ -82,6 +83,8 @@ def main() -> None:
         assert exported["head_execution_id"] == revised_id
         other_hist = expect_status(request(client, "GET", f"/decisions/{decision_id}/history", org_b), 200)
         assert other_hist["executions"] == []
+        state_path = Path(os.environ["RUNNER_TEMP"]) / "qdip-rr-e2e-state.json"
+        state_path.write_text(json.dumps({"original_id": original_id, "revised_id": revised_id, "decision_id": decision_id}), encoding="utf-8")
 
     evidence = {
         "version": "qdip.e2e.http-rr.v1",
