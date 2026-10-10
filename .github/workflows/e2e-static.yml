@@ -1,0 +1,35 @@
+name: Validate public E2E suite
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/**'
+      - 'scripts/**'
+      - 'fixtures/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qdip-e2e-static-lint
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    if: github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check workflows with actionlint
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 .github/workflows/*.yml
+      - name: Validate standalone E2E Python sources and JSON fixture
+        run: |
+          python -m compileall -q scripts
+          python -m json.tool fixtures/rr_reference_api_v1.json >/dev/null
+      - name: Check shell syntax
+        run: bash -n scripts/*.sh
