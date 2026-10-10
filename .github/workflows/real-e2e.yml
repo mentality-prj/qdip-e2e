@@ -20,8 +20,8 @@ permissions:
   contents: read
 
 concurrency:
-  # New pushes supersede older auto-run SHAs, manual runs stay independent.
-  group: qdip-real-e2e-${{ github.event_name }}
+  # Do not cancel another branch's E2E. Manual runs have isolated run IDs.
+  group: qdip-real-e2e-${{ github.event_name }}-${{ github.event.client_payload.backend_branch || github.run_id }}
   cancel-in-progress: true
 
 jobs:
