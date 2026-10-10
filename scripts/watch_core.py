@@ -18,11 +18,11 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 API = "https://api.github.com"
-CORE = "mentality-prj/dzvin-intelligence-platform"
-OBS = "mentality-prj/dip-observatory"
-TARGET = "mentality-prj/qdip-e2e"
+CORE = "qdip-ai/qdip-core"
+OBS = "qdip-ai/qdip-web"
+TARGET = "qdip-ai/qdip-e2e"
 BRANCHES = ("feat/rr-prod-01-normalized-source-import", "dev")
-OBS_BRANCH = "feat/rr-production-operator-boundary"
+OBS_BRANCH = "fix/rr-single-kernel-authority"
 LEDGER = ".state/core-watch.json"
 RR_CONTRACT = "app/plugins/readiness_recovery/reference_proof.py"
 SOURCE_PREFIXES = ("app/", "tests/", "packages/", "examples/", "scripts/")
