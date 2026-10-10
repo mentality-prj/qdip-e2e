@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 50
     permissions:
-      contents: write
+      contents: read
     env:
       PYTHONUNBUFFERED: '1'
       NEXT_TELEMETRY_DISABLED: '1'
@@ -115,14 +115,14 @@ jobs:
           echo 'OIDC_PRODUCTION_AUTH=NOT_TESTED'
           echo 'HIGH_AVAILABILITY_SLA=NOT_TESTED'
 
-      - name: Persist automatic run outcome in durable E2E ledger
+      - name: Upload sanitized stage statuses only
         if: always() && github.event_name == 'repository_dispatch'
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          E2E_BRANCH: ${{ github.event.client_payload.backend_branch }}
-          E2E_SHA: ${{ github.event.client_payload.backend_sha }}
-          E2E_JOB_STATUS: ${{ job.status }}
-        run: python suite/scripts/report_run.py
+        uses: actions/upload-artifact@v4
+        with:
+          name: qdip-e2e-phase-statuses
+          path: ${{ runner.temp }}/qdip-stage-results.jsonl
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Publish sanitized evidence (no raw private logs)
         if: always()
@@ -135,3 +135,31 @@ jobs:
             suite/reports/sdk-e2e-summary.json
           if-no-files-found: warn
           retention-days: 7
+
+  finalize:
+    name: Record result without running private source code
+    needs: integration
+    if: always() && github.event_name == 'repository_dispatch' && github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Fetch sanitized statuses (optional if bootstrap failed)
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: qdip-e2e-phase-statuses
+          path: ${{ runner.temp }}/statuses
+      - name: Commit PASS/TEST_FAIL/INFRA_FAIL to durable watcher ledger
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          E2E_BRANCH: ${{ github.event.client_payload.backend_branch }}
+          E2E_SHA: ${{ github.event.client_payload.backend_sha }}
+          E2E_JOB_STATUS: ${{ needs.integration.result }}
+          E2E_PHASES_PATH: ${{ runner.temp }}/statuses/qdip-stage-results.jsonl
+        run: python scripts/report_run.py
