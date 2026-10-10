@@ -27,15 +27,8 @@ LEDGER = ".state/core-watch.json"
 RR_CONTRACT = "app/plugins/readiness_recovery/reference_proof.py"
 SOURCE_PREFIXES = ("app/", "tests/", "packages/", "examples/", "scripts/")
 SOURCE_NAMES = {"pyproject.toml", "uv.lock", "poetry.lock", "requirements.txt"}
-SUITE_PATHS = (
-    ".github/workflows/real-e2e.yml",
-    "scripts/http_rr_e2e.py",
-    "scripts/http_sdk_e2e.py",
-    "scripts/provision_tenants.py",
-    "scripts/safe_stage.py",
-    "scripts/verify_dispatch.py",
-    "fixtures/rr_reference_api_v1.json",
-)
+# Every E2E runner, fixture and check influences the test identity.
+# The mutable .state ledger itself is intentionally excluded.
 
 
 def api(path: str, token: str, *, body: dict | None = None, method: str | None = None) -> dict:
@@ -93,12 +86,15 @@ def relevant_changes(previous: str | None, current: str, token: str) -> bool:
 def fingerprint() -> str:
     digest = hashlib.sha256()
     root = Path(__file__).resolve().parents[1]
-    for name in SUITE_PATHS:
-        path = root / name
-        digest.update(name.encode())
-        digest.update(b"\0")
+    paths = [root / ".github/workflows/real-e2e.yml"]
+    paths += sorted(path for path in (root / "scripts").rglob("*") if path.is_file())
+    paths += sorted(path for path in (root / "fixtures").rglob("*") if path.is_file())
+    for path in paths:
+        relative = path.relative_to(root).as_posix()
+        digest.update(relative.encode())
+        digest.update(bytes([0]))
         digest.update(path.read_bytes())
-        digest.update(b"\0")
+        digest.update(bytes([0]))
     return digest.hexdigest()
 
 
