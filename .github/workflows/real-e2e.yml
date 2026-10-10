@@ -43,6 +43,16 @@ jobs:
           path: suite
           persist-credentials: false
 
+      - name: Record automatic test attempt SHA (for polling deduplication)
+        if: github.event_name == 'repository_dispatch'
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.event.client_payload.backend_sha }}
+        run: |
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 2
+          mkdir -p suite/reports
+          printf 'tested_backend_sha=%s\nrun_id=%s\n' "$EXPECTED_SHA" "$GITHUB_RUN_ID" > suite/reports/attempt.txt
+
       - name: Require read-only access to private source repositories
         shell: bash
         env:
@@ -184,6 +194,15 @@ jobs:
           echo 'RR_OIDC_FINAL_AUTH=NOT_IMPLEMENTED'
           echo 'RR_PRODUCTION_SECURITY_SLA=NOT_QUALIFIED'
           echo 'RR_PRODUCT_VERDICT=NOT_QUALIFIED_PENDING_INDEPENDENT_REVIEW'
+
+      - name: Upload automatic E2E attempt marker (also on failed checks)
+        if: always() && github.event_name == 'repository_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: qdip-e2e-attempt-${{ github.event.client_payload.backend_sha }}
+          path: suite/reports/attempt.txt
+          if-no-files-found: warn
+          retention-days: 30
 
       - name: Upload sanitized evidence and exact source SHAs
         if: always()
