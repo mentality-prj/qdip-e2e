@@ -73,10 +73,25 @@ traceback/source exposure but means detailed private diagnostics require a
 separately authorized restricted debugging process. Do not enable raw debug
 logging on public runs.
 
-The real-service test now includes independent versioned civilian input JSON
+The real-service tests now use independent versioned civilian API JSON
 (`fixtures/rr_reference_api_v1.json`) instead of importing a Core-owned
-fixture, actual FastAPI restart with retained MongoDB state, and fail-closed
-browser coverage (3 expected tests, zero skipped).
+fixture. They exercise real concurrent replans (one head wins),
+process restart with retained MongoDB history, API-key revocation,
+SDK Worker disconnect and fail-closed Chromium coverage (3 required
+tests, zero skipped).
+
+**Least privilege:** the integration job executing private source has only
+`contents: read`. A separate public-suite-only finalizer job downloads
+a sanitized stage-status artifact and updates the durable ledger with
+`contents: write`. No private backend is checked out into this
+write-capable job. The public `Validate public E2E suite` workflow
+runs Actionlint, Python syntax and Bash syntax checks on suite changes,
+but allocates no runner until this repository is Public.
+
+**Limits:** E2E is `NOT_RUN` until an actual public hosted-runner
+job succeeds. Browser login still tests temporary reference-password
+authentication, not final OIDC; single-node Mongo replica does not
+establish HA or production RTO/RPO.
 
 The Observatory ref in automatic runs is currently the staged
 `feat/rr-production-operator-boundary`; each E2E records its exact
