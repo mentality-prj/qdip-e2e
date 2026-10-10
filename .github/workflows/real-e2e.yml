@@ -27,6 +27,7 @@ concurrency:
 jobs:
   real-rr:
     name: Real MongoDB + FastAPI + HTTP + browser
+    if: github.event.repository.private == false
     runs-on: ubuntu-24.04
     timeout-minutes: 50
     env:
@@ -35,7 +36,7 @@ jobs:
       RR_TEST_MONGODB_URL: "mongodb://127.0.0.1:27019/?replicaSet=rrtest&directConnection=true"
       NEXT_TELEMETRY_DISABLED: "1"
       DIP_API_BASE_URL: "http://127.0.0.1:8000"
-      RR_E2E_API_REQUEST_PATH: "${{ runner.temp }}/rr-reference-request.json"
+      RR_E2E_API_REQUEST_PATH: "/tmp/rr-reference-request.json"
     steps:
       - name: Checkout independent E2E suite
         uses: actions/checkout@v4
