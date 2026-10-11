@@ -92,6 +92,31 @@ jobs:
           set +e
           python -m pytest -q tests/plugins/readiness_recovery --ignore=tests/plugins/readiness_recovery/test_mongo_integration.py > "$RUNNER_TEMP/rr-all.log" 2>&1
           result=$?
+          if [[ "$result" -ne 0 ]]; then
+            python - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+          log = Path(os.environ["RUNNER_TEMP"], "rr-all.log").read_text(encoding="utf-8")
+          failures = re.findall(
+              r"^FAILED (tests/plugins/readiness_recovery/[A-Za-z0-9_./-]+::[A-Za-z0-9_\[\]_-]+)",
+              log, flags=re.MULTILINE,
+          )
+          errors = re.findall(
+              r"^ERROR (tests/plugins/readiness_recovery/[A-Za-z0-9_./-]+::[A-Za-z0-9_\[\]_-]+)",
+              log, flags=re.MULTILINE,
+          )
+          for name in failures[:30]:
+              print("RR_TEST_FAILED=" + name[:200])
+          for name in errors[:30]:
+              print("RR_TEST_ERROR=" + name[:200])
+          summary = re.search(r"^=+ (.{1,200}) =+$", log, flags=re.MULTILINE)
+          print("RR_FAILURES_COUNT=" + str(len(failures)))
+          print("RR_ERRORS_COUNT=" + str(len(errors)))
+          if not failures and not errors:
+              print("RR_TEST_FAILURE_UNCLASSIFIED=1")
+          PY
+          fi
           echo "RR_FULL_PLUGIN_UNIT_TESTS_EXIT=$result"
           exit "$result"
       - name: Qualification marker (no private source or logs)
