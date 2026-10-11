@@ -41,6 +41,8 @@ for env_name, (org, kid) in names.items():
 values["API_KEY"] = secrets.token_urlsafe(48)
 values["RR_OPERATOR_PASSWORD"] = secrets.token_urlsafe(48)
 values["RR_OPERATOR_SESSION_SECRET"] = secrets.token_urlsafe(64)
+# Isolated Core/Web actor-attribution trust secret. Never use in production.
+values["RR_ACTOR_ASSERTION_SECRET"] = secrets.token_urlsafe(64)
 # The staged Observatory operator is a separate app, but must use a valid
 # org-scoped key. Never pass the platform-level API_KEY to the browser proxy.
 values["DIP_API_KEY"] = values["E2E_KEY_A"]

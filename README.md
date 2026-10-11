@@ -172,3 +172,18 @@ identities; this suite does not prove multi-tenant SSO, production SLA/HA,
 field effectiveness, ROI or customer acceptance. The new tests intentionally
 fail against unqualified Core/Web combinations; green static validation only
 means test scripts are syntactically valid, not that real E2E passed.
+
+### Signed Core actor audit acceptance (additional)
+
+For `rr-plugin-v1`, the isolated runner also generates an independent
+`RR_ACTOR_ASSERTION_SECRET` (masked in Actions output). A second real Core
+HTTP/Mongo execution uses a short-lived HMAC actor assertion matching the
+Zitadel BFF's wire format. It verifies immutable execution and replan audit
+attribution and fail-closed forged, expired or wrong-operation assertions.
+
+**This does not simulate or claim a real Zitadel login**. Live OAuth/OIDC
+callback, token signature, approved subject and browser audit identity remain
+a separate external end-to-end gate requiring a configured Zitadel test
+account/issuer and matching Core/Web secrets. The default staged Web reference
+operator uses password authentication only for isolated data-plane E2E; it
+cannot qualify the final OIDC release.
