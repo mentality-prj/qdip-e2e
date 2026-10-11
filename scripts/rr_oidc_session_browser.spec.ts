@@ -3,7 +3,7 @@ import { createHmac } from 'node:crypto'
 import { expect, test } from '@playwright/test'
 
 // This spec is owned by the independent E2E suite and copied to the checked-out
-// qdip-web/e2e directory ONLY when the rr-plugin-v1 contract is required.
+// qdip-web/e2e directory ONLY for the rr-oidc-session-v1 contract.
 // The E2E fixture injects an ephemeral signed session; live Zitadel login is NOT tested.
 // HTTP, Core, Mongo persistence and BFF authorization are never mocked.
 const ORIGIN = 'http://observatory.localhost:3000'
@@ -24,13 +24,16 @@ type CivilianRequest = {
  * It deliberately does NOT test Zitadel login, PKCE, JWKS or callbacks.
  * Never use this fixture with production origin or production secrets.
  */
-async function installIsolatedOidcSession(page: import('@playwright/test').Page) {
-  const secret = process.env.QDIP_AUTH_COOKIE_SECRET ?? ''
+async function installIsolatedOidcSession(page: import('@playwright/test').Page, role: 'rr' | 'studio' = 'rr') {
+  const secret = process.env.QDIP_WEB_SESSION_SIGNING_SECRET ?? ''
   const issuer = process.env.ZITADEL_ISSUER ?? ''
   const clientId = process.env.ZITADEL_CLIENT_ID ?? ''
-  const subject = process.env.QDIP_AUTH_OPERATOR_SUBJECTS ?? ''
+  const rrSubject = process.env.QDIP_RR_ALLOWED_ZITADEL_USER_IDS ?? ''
+  const studioSubject = process.env.QDIP_STUDIO_ALLOWED_ZITADEL_USER_IDS ?? ''
+  const subject = role === 'rr' ? rrSubject : studioSubject
   if (secret.length < 32 || issuer !== 'https://qdip-e2e.invalid' || clientId !== 'qdip-e2e-client' ||
-      subject !== 'qdip-e2e-operator' || process.env.GITHUB_ACTIONS !== 'true')
+      rrSubject !== 'qdip-e2e-operator' || studioSubject !== 'qdip-e2e-studio-only' ||
+      process.env.GITHUB_ACTIONS !== 'true')
     throw new Error('Isolated OIDC-session test configuration is missing or unsafe')
   const expiresAt = Math.floor(Date.now() / 1000) + 900
   const body = Buffer.from(JSON.stringify({sub: subject, issuer, clientId, expiresAt})).toString('base64url')
@@ -49,7 +52,7 @@ async function installIsolatedOidcSession(page: import('@playwright/test').Page)
 
 function actualInput(): CivilianRequest {
   if (process.env.RR_E2E_CONTRACT_MODE !== 'rr-oidc-session-v1')
-    throw new Error('The real plugin browser suite requires rr-plugin-v1 mode')
+    throw new Error('The isolated OIDC-session browser suite requires rr-oidc-session-v1 mode')
   const path = process.env.RR_E2E_API_REQUEST_PATH
   if (!path)
     throw new Error('The disposable RR API request fixture is required')
@@ -90,6 +93,17 @@ test('anonymous browser cannot preflight, read Kernel evidence or export history
   expect(history.status()).toBe(401)
 })
 
+test('Studio-only Zitadel subject cannot access RR operator', async ({ page }) => {
+  await installIsolatedOidcSession(page, 'studio')
+  const session = await page.request.get(`${ORIGIN}/api/rr-operator/session`)
+  expect(session.status()).toBe(200)
+  const result = (await session.json()) as { configured: boolean; authenticated: boolean }
+  expect(result.configured).toBe(true)
+  expect(result.authenticated).toBe(false)
+  const denied = await page.request.get(`${ROUTE}/executions/denied/presentation`)
+  expect(denied.status()).toBe(401)
+})
+
 test('tampered isolated OIDC session never authorizes the Web BFF', async ({ page }) => {
   await installIsolatedOidcSession(page)
   const cookies = await page.context().cookies(ORIGIN)
@@ -111,6 +125,9 @@ test('live browser → Core preflight → CP-SAT → Mongo → decision-first �
   test.setTimeout(240_000)
   const original = actualInput()
   await installIsolatedOidcSession(page)
+  const sessionCheck = await page.request.get(`${ORIGIN}/api/rr-operator/session`)
+  expect(sessionCheck.status()).toBe(200)
+  expect(((await sessionCheck.json()) as { authenticated: boolean }).authenticated).toBe(true)
   await page.goto(PAGE, { waitUntil: 'domcontentloaded' })
   const panel = page.getByTestId('rr-production-operator')
   await expect(panel).toBeVisible()
