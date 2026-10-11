@@ -81,7 +81,7 @@ jobs:
         with:
           repository: qdip-ai/qdip-core
           token: ${{ secrets.QDIP_READ_TOKEN }}
-          ref: ${{ github.event.client_payload.backend_sha || inputs.backend_ref || '08b816199c7e238c0ed13cc00986ec5fc4eb098f' }}
+          ref: ${{ github.event.client_payload.backend_sha || inputs.backend_ref || '6bfb033c8faeb46ec88023801f6cf38e84fb6b76' }}
           path: backend
           persist-credentials: false
 
@@ -90,7 +90,7 @@ jobs:
         with:
           repository: qdip-ai/qdip-web
           token: ${{ secrets.QDIP_READ_TOKEN }}
-          ref: ${{ github.event.client_payload.observatory_ref || inputs.observatory_ref || '41a034cbfa3310c76ca3c3c6e31142d3ac8f34d0' }}
+          ref: ${{ github.event.client_payload.observatory_ref || inputs.observatory_ref || '20e9180ff3937e8b8f6a163bc9f022bbfc4fe625' }}
           path: observatory
           persist-credentials: false
 
