@@ -25,7 +25,7 @@ VERSION = "readiness-recovery.presentation.v1"
 def signed_actor(*, operation: str, expires: int, alter_signature: bool = False) -> tuple[str, str]:
     """Synthetic signed BFF hint, NOT a substitute for genuine Zitadel login."""
     issuer, subject = "https://e2e.invalid", "test-subject"
-    actor = "zitadel:" + hashlib.sha256((issuer + "\\0" + subject).encode()).hexdigest()
+    actor = "zitadel:" + hashlib.sha256((issuer + chr(0) + subject).encode()).hexdigest()
     unsigned = f"v1.{expires}.{actor}.{operation}"
     signature = hmac.new(
         os.environ["RR_ACTOR_ASSERTION_SECRET"].encode(), unsigned.encode(), hashlib.sha256
