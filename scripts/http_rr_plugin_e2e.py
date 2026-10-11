@@ -228,6 +228,48 @@ def main() -> None:
             call(client, "GET", f"/executions/{actor_replan['execution_id']}", key_a), 200
         )["actor_id"] == expected_actor
 
+        # Exercise the real HTTP/Mongo atomic head gate under concurrent writers,
+        # not only the repository-unit implementation.
+        from concurrent.futures import ThreadPoolExecutor
+
+        race_initial = copy.deepcopy(initial)
+        race_initial["execution_id"] = f"rr-race-{suffix}-initial"
+        race_initial["payload"]["decision_id"] = f"civilian-race-{suffix}"
+        race_initial["source"]["snapshot_id"] = f"race-snapshot-{suffix}"
+        expected(call(client, "POST", "/executions", key_a, payload=race_initial), 201)
+
+        def race_replan(number: int) -> int:
+            change_time = now + timedelta(seconds=10 + number)
+            candidate = {
+                "execution_id": f"rr-race-{suffix}-{number}",
+                "change_id": f"race-change-{suffix}-{number}",
+                "kind": "OVERRIDE",
+                "reason": f"Concurrent RR operator update candidate {number}.",
+                "requested_at": change_time.isoformat(),
+                "source": race_initial["source"],
+                "ingested_at": change_time.isoformat(),
+                "payload": {
+                    **race_initial["payload"],
+                    "operator_directives": {"excluded_job_ids": ["sensor-service"]},
+                },
+            }
+            with httpx.Client(timeout=65) as isolated:
+                return call(
+                    isolated, "POST", f"/executions/{race_initial['execution_id']}/replan",
+                    key_a, payload=candidate,
+                ).status_code
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            statuses = sorted(executor.map(race_replan, [1, 2]))
+        assert statuses == [201, 409], "Concurrent replans must commit only one head"
+        race_history = expected(
+            call(client, "GET", f"/decisions/{race_initial['payload']['decision_id']}/history", key_a), 200
+        )
+        assert len(race_history["executions"]) == 2
+        assert call(
+            client, "GET", f"/decisions/{race_initial['payload']['decision_id']}/history", key_b
+        ).status_code in (403, 404, 409)
+
         # New persisted revision and plugin-computed evidence, never inferred by UI.
         later = now + timedelta(seconds=2)
         revision = {
@@ -255,6 +297,35 @@ def main() -> None:
 
         history = expected(call(client, "GET", f"/decisions/{decision_id}/history", key_a), 200)
         assert len(history["executions"]) == 2
+        # Force transport pagination for a two-revision history; continuation
+        # must be pinned to one head and cannot duplicate or omit a revision.
+        small_page = expected(
+            call(client, "GET", f"/decisions/{decision_id}/history/export?page_size=1", key_a), 200
+        )
+        assert small_page["export_complete"] is False
+        assert small_page["next_cursor"]
+        continuation = expected(
+            call(
+                client, "GET",
+                f"/decisions/{decision_id}/history/export?page_size=1"
+                f"&cursor={small_page['next_cursor']}&expected_head={successor_id}",
+                key_a,
+            ), 200
+        )
+        assert continuation["export_complete"] is True
+        assert continuation["next_cursor"] is None
+        combined_ids = [
+            row["result"]["workflow"]["execution_id"]
+            for row in (*small_page["executions"], *continuation["executions"])
+        ]
+        assert set(combined_ids) == {execution_id, successor_id} and len(combined_ids) == 2
+        assert call(
+            client, "GET",
+            f"/decisions/{decision_id}/history/export?page_size=1"
+            f"&cursor={small_page['next_cursor']}&expected_head=wrong-head",
+            key_a,
+        ).status_code == 409
+
         integrity = expected(call(client, "GET", f"/decisions/{decision_id}/history-integrity", key_a), 200)
         assert integrity["complete_chain"] is True
         replay = expected(call(client, "GET", f"/executions/{successor_id}/replay-verification", key_a), 200)
@@ -303,6 +374,8 @@ def main() -> None:
                 "verified_export_page_head_manifest_negative": "PASS",
                 "signed_actor_tamper_expiry_operation_and_audit": "PASS",
                 "signed_actor_cross_org_api_key_replay": "PASS",
+                "real_http_concurrent_replan_single_head": "PASS",
+                "transport_pagination_two_pages_and_head_pin": "PASS",
                 "stochastic_roi_or_field_verification": "NOT_CLAIMED",
                 "oidc": "NOT_TESTED",
             },
