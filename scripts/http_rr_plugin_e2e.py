@@ -167,6 +167,7 @@ def main() -> None:
             201,
         )
         assert signed_created["actor_id"] == expected_actor
+        assert signed_created["audit_evidence"]["actor_id"] == expected_actor
         # Idempotence must preserve original signed actor attribution.
         retried_signed = expected(
             call(client, "POST", "/executions", key_a, payload=actor_input, actor_assertion=ok_assertion),
@@ -205,6 +206,7 @@ def main() -> None:
             201,
         )
         assert actor_revision["actor_id"] == expected_actor
+        assert actor_revision["audit_evidence"]["actor_id"] == expected_actor
         assert actor_revision["result"]["workflow"]["change"]["predecessor_execution_id"] == actor_input[
             "execution_id"
         ]
