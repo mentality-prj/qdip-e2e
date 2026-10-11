@@ -189,16 +189,24 @@ test('signed RR role with wrong project, organization, issuer or expiry is denie
 
 test('anonymous and Studio-only browser cannot operate RR', async ({ page }) => {
   await page.goto(PAGE, { waitUntil: 'domcontentloaded' })
+  const panel = page.getByTestId('rr-production-operator')
+  await expect(panel).toBeVisible()
   const anonymous = await page.request.get(`${ORIGIN}/api/auth/session`)
   expect(anonymous.status()).toBe(200)
   expect(await anonymous.json()).toMatchObject({ configured: true, authenticated: false, operator: false })
-  await expect(page.getByTestId('rr-economic-v2-preflight')).toHaveCount(0)
+  await expect(panel.getByRole('button', { name: 'Sign in with Zitadel' })).toBeVisible()
+  await expect(panel.getByLabel('Kernel execution JSON')).toHaveCount(0)
+  await expect(panel.getByRole('button', { name: 'Create execution' })).toHaveCount(0)
+  await expect(page.getByTestId('rr-decision-first')).toHaveCount(0)
   await installIsolatedOidcSession(page, 'studio')
   const denied = await page.request.get(`${ORIGIN}/api/rr-operator/session`)
   expect(denied.status()).toBe(200)
   expect(await denied.json()).toMatchObject({ configured: true, authenticated: false })
   await page.reload()
-  await expect(page.getByTestId('rr-economic-v2-preflight')).toHaveCount(0)
+  await expect(panel.getByRole('button', { name: 'Sign in with Zitadel' })).toBeVisible()
+  await expect(panel.getByLabel('Kernel execution JSON')).toHaveCount(0)
+  await expect(panel.getByRole('button', { name: 'Create execution' })).toHaveCount(0)
+  await expect(page.getByTestId('rr-decision-first')).toHaveCount(0)
 })
 
 test('tampered isolated OIDC session never authorizes the Web BFF', async ({ page }) => {
