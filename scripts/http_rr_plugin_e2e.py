@@ -152,6 +152,27 @@ def main() -> None:
         replay = expected(call(client, "GET", f"/executions/{successor_id}/replay-verification", key_a), 200)
         assert replay["verified"] is True
 
+        # This is the actual endpoint consumed by the staged Web operator.
+        # Core attests each page; the browser must not invent history integrity.
+        page_path = f"/decisions/{decision_id}/history/verified-export-page"
+        first_page = expected(call(client, "GET", page_path, key_a), 200)
+        assert first_page["schema_version"] == VERSION
+        assert first_page["history_verified"] is True
+        assert first_page["export_complete"] is True
+        assert first_page["next_cursor"] is None
+        assert first_page["head_execution_id"] == successor_id
+        assert len(first_page["executions"]) == 2
+        assert len(first_page["history_manifest_digest"]) == 64
+        second_head = expected(
+            call(client, "GET", page_path + f"?expected_head={successor_id}", key_a), 200
+        )
+        assert second_head["history_manifest_digest"] == first_page["history_manifest_digest"]
+        changed_head = call(client, "GET", page_path + "?expected_head=not-the-head", key_a)
+        assert changed_head.status_code == 409, "Core must reject a stale verified export head"
+        missing_cursor = call(client, "GET", page_path + "?cursor=not-an-execution", key_a)
+        assert missing_cursor.status_code in (409, 422), "Invalid verified export cursor must fail"
+        assert call(client, "GET", page_path, key_b).status_code in (403, 404, 409)
+
         exported = expected(call(client, "GET", f"/decisions/{decision_id}/history/export-complete", key_a), 200)
         assert exported["schema_version"] == VERSION
         assert exported["decision_id"] == decision_id
@@ -171,6 +192,7 @@ def main() -> None:
                 "negative_schema_auth_tenant": "PASS",
                 "persisted_kernel_presentation": "PASS",
                 "replan_history_replay_verified_export": "PASS",
+                "verified_export_page_head_manifest_negative": "PASS",
                 "stochastic_roi_or_field_verification": "NOT_CLAIMED",
                 "oidc": "NOT_TESTED",
             },
