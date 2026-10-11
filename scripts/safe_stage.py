@@ -14,7 +14,7 @@ from pathlib import Path
 
 ALLOWED = {
     "backend-install", "mongodb-integration", "mongodb-recovery",
-    "backend-start", "backend-http", "backend-restart", "backend-restart-verify",
+    "backend-start", "backend-http", "rr-plugin-http", "backend-restart", "backend-restart-verify",
     "observatory-install", "observatory-lint", "observatory-typecheck",
     "observatory-unit", "observatory-build", "browser-install", "browser-e2e",
     "sdk-install", "sdk-e2e", "sdk-negative", "rr-auth-revocation", "test-report",
