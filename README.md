@@ -197,14 +197,20 @@ It does not use the retired shared-password operator.
 
 For this mode the disposable runner creates **only synthetic**:
 `ZITADEL_ISSUER=https://qdip-e2e.invalid`,
-`ZITADEL_CLIENT_ID=qdip-e2e-client`, `QDIP_AUTH_OPERATOR_SUBJECTS`
-and `QDIP_AUTH_ALLOWED_SUBJECTS=qdip-e2e-operator`, a short-lived
-HMAC-signed QDIP browser session and independent random session/actor
-secrets. The browser exercises the actual BFF's authorization, signed
+`ZITADEL_CLIENT_ID=qdip-e2e-client`,
+`QDIP_WEB_SESSION_SIGNING_SECRET` (random per run),
+`QDIP_RR_ALLOWED_ZITADEL_USER_IDS=qdip-e2e-operator`, and
+`QDIP_STUDIO_ALLOWED_ZITADEL_USER_IDS=qdip-e2e-studio-only`.
+It creates a short-lived HMAC-signed browser session with an independent
+random actor signing secret. The two allowlists are intentionally disjoint:
+a Studio-only session must not authorize RR. Retired
+`QDIP_AUTH_COOKIE_SECRET`, `QDIP_AUTH_ALLOWED_SUBJECTS`, and
+`QDIP_AUTH_OPERATOR_SUBJECTS` are not used by the runner. The browser exercises the actual BFF's authorization, signed
 pseudonymous Core actor attribution, Core HTTP/CP-SAT, Mongo persistence,
 read-model evidence, replanning and verified-page export without mocking
-any backend or persistence. It also checks that the retired password route
-returns 410 and untrusted guest requests return 401.
+any backend or persistence. It also checks that the retired password route returns 410,
+untrusted guests and Studio-only accounts cannot invoke RR, and tampered
+signed cookies return 401.
 
 **This does NOT authenticate with a real Zitadel issuer and does NOT
 qualify authorization-code exchange, registered callback, JWKS signature,
