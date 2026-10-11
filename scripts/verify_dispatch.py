@@ -9,10 +9,7 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 REPO = "qdip-ai/qdip-core"
-BRANCH_TO_WEB = {
-    "dev": "dev",
-    "feat/rr-plugin-computation-ownership": "feat/qdip-zitadel-oidc",
-}
+BRANCH_TO_WEB = {"dev": "dev"}
 
 def get(path: str, token: str) -> dict:
     request = Request(
