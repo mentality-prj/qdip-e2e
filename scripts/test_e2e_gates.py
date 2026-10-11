@@ -112,6 +112,39 @@ class ActiveQualificationRefTests(unittest.TestCase):
             remote.assert_not_called()
 
 
+class DashboardPairWatcherTests(unittest.TestCase):
+    def test_unmerged_core_plugin_is_not_tested_as_retired_password_dashboard(self) -> None:
+        # Core/dev has the old reference proof but no Core-owned presentation.
+        # The already-merged Web/dev is Zitadel-only. This is a pending
+        # deployment pairing, NOT a failing RR plugin acceptance test.
+        paths = ["feat/rr-plugin-computation-ownership", "dev"]
+        ledger = {"version": 1, "branches": {}}
+        with (
+            patch.dict("os.environ", {
+                "GITHUB_ACTIONS": "true",
+                "GITHUB_REPOSITORY": watch_core.TARGET,
+                "QDIP_READ_TOKEN": "read-only-test",
+                "GITHUB_TOKEN": "public-test",
+            }),
+            patch.object(watch_core, "fingerprint", return_value="test-suite"),
+            patch.object(watch_core, "read_ledger", return_value=(ledger, None)),
+            patch.object(watch_core, "head", side_effect=lambda repo, branch, token:
+                ("a" if repo == watch_core.CORE and branch == paths[0]
+                 else "b" if repo == watch_core.CORE else "c") * 40),
+            patch.object(watch_core, "rr_contract_mode", side_effect=[
+                "rr-oidc-session-v1", "legacy",
+            ]),
+            patch.object(watch_core, "supported", return_value=False),
+            patch.object(watch_core, "dispatch") as dispatch,
+            patch.object(watch_core, "write_ledger") as saved,
+        ):
+            self.assertEqual(watch_core.main(), 0)
+            dispatch.assert_not_called()
+            written = saved.call_args.args[0]["branches"]
+            self.assertEqual(written["dev"]["status"], "RR_PLUGIN_NOT_MERGED")
+            self.assertNotEqual(written["dev"]["status"], "PASS")
+
+
 class ContractDiscoveryTests(unittest.TestCase):
     CORE = "a" * 40
     WEB = "b" * 40
