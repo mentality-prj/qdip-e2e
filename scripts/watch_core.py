@@ -177,6 +177,19 @@ def main() -> int:
         previous_sha = prior.get("seen_sha")
         attempt = prior.get("last_attempt", {})
         mode = rr_contract_mode(sha, obs_sha, source)
+        # Web/dev now uses Zitadel, while Core/dev can still be pre-RR-plugin.
+        # A missing Core presentation contract is not a compatible legacy
+        # operator: never run retired password Chromium tests against OIDC.
+        # Record this as an unsupported PAIR, not a successful qualification
+        # or a real product regression.
+        if mode == "legacy":
+            if prior.get("seen_sha") != sha or prior.get("status") != "RR_PLUGIN_NOT_MERGED":
+                data["branches"][branch] = {
+                    **prior, "seen_sha": sha, "status": "RR_PLUGIN_NOT_MERGED",
+                }
+                updated = True
+            print(f"QDIP_WATCH_PAIR_NOT_READY={branch}:RR_PLUGIN_NOT_MERGED")
+            continue
         key = hashlib.sha256(f"{sha}:{obs_sha}:{observed_suite}:{mode}".encode()).hexdigest()
         if not supported(sha, source):
             data["branches"][branch] = {**prior, "seen_sha": sha, "status": "UNSUPPORTED_RR"}
