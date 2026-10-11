@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import check_browser_report
@@ -43,6 +44,50 @@ class BrowserGateTests(unittest.TestCase):
 
     def test_unknown_contract_never_falls_back(self) -> None:
         self.assertFalse(check_browser_report.validate(report("legacy"), "unknown"))
+
+
+class IsolatedOidcFixtureTests(unittest.TestCase):
+    @staticmethod
+    def source(name: str) -> str:
+        return (Path(__file__).parent / name).read_text(encoding="utf-8")
+
+    def test_e2e_session_fixture_uses_current_web_229_names(self) -> None:
+        provision = self.source("provision_tenants.py")
+        browser = self.source("rr_oidc_session_browser.spec.ts")
+        current = {
+            "QDIP_WEB_SESSION_SIGNING_SECRET",
+            "QDIP_RR_ALLOWED_ZITADEL_USER_IDS",
+            "QDIP_STUDIO_ALLOWED_ZITADEL_USER_IDS",
+        }
+        for key in current:
+            with self.subTest(name=key):
+                self.assertIn(key, provision)
+                self.assertIn(key, browser)
+        for retired in (
+            "QDIP_AUTH_COOKIE_SECRET",
+            "QDIP_AUTH_ALLOWED_SUBJECTS",
+            "QDIP_AUTH_OPERATOR_SUBJECTS",
+        ):
+            with self.subTest(retired=retired):
+                self.assertNotIn(retired, provision)
+                self.assertNotIn(retired, browser)
+
+    def test_studio_only_subject_is_a_required_negative_browser_case(self) -> None:
+        provision = self.source("provision_tenants.py")
+        browser = self.source("rr_oidc_session_browser.spec.ts")
+        self.assertIn('"qdip-e2e-operator"', provision)
+        self.assertIn('"qdip-e2e-studio-only"', provision)
+        self.assertIn("Studio-only Zitadel subject cannot access RR operator", browser)
+        required = check_browser_report.MATRIX["rr-oidc-session-v1"]
+        self.assertEqual(len(required), 6)
+        self.assertIn("Studio-only Zitadel subject cannot access RR operator", required)
+        test_report = report("rr-oidc-session-v1")
+        self.assertTrue(check_browser_report.validate(test_report, "rr-oidc-session-v1"))
+        test_report["suites"][0]["specs"] = [
+            spec for spec in test_report["suites"][0]["specs"]
+            if not spec["title"].startswith("Studio-only Zitadel subject")
+        ]
+        self.assertFalse(check_browser_report.validate(test_report, "rr-oidc-session-v1"))
 
 
 class ContractDiscoveryTests(unittest.TestCase):

@@ -48,7 +48,7 @@ values["RR_ACTOR_ASSERTION_SECRET"] = secrets.token_urlsafe(64)
 values["QDIP_WEB_SESSION_SIGNING_SECRET"] = secrets.token_urlsafe(64)
 values["ZITADEL_ISSUER"] = "https://qdip-e2e.invalid"
 values["ZITADEL_CLIENT_ID"] = "qdip-e2e-client"
-values["QDIP_STUDIO_ALLOWED_ZITADEL_USER_IDS"] = "qdip-e2e-operator"
+values["QDIP_STUDIO_ALLOWED_ZITADEL_USER_IDS"] = "qdip-e2e-studio-only"
 values["QDIP_RR_ALLOWED_ZITADEL_USER_IDS"] = "qdip-e2e-operator"
 # The staged Observatory operator is a separate app, but must use a valid
 # org-scoped key. Never pass the platform-level API_KEY to the browser proxy.
