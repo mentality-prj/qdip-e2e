@@ -1,5 +1,6 @@
 name: RR pinned Core–Web–Mongo isolated E2E
 run-name: RR isolated full-stack qualification
+# Numeric-only HTTP failure diagnostics; never export private raw browser traces.
 
 on:
   push:
