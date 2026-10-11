@@ -44,7 +44,10 @@ def main() -> None:
             print(f"BROWSER_CASE_{idx+1}=MISSING_OR_DUPLICATE")
             continue
         spec = matched[0]
-        for annotation in spec.get("annotations", []):
+        annotations = [*spec.get("annotations", [])]
+        for case in spec.get("tests", []):
+            annotations.extend(case.get("annotations", []))
+        for annotation in annotations:
             label, value = annotation.get("type", ""), annotation.get("description", "")
             if re.fullmatch(r"rr-[a-z-]{1,45}", label) and re.fullmatch(r"(?:[1-5][0-9]{2}|true|false)", value):
                 print(f"BROWSER_CASE_{idx+1}_{label.replace('-', '_').upper()}={value}")
