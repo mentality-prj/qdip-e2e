@@ -83,7 +83,7 @@ def check_projection(value: dict, *, execution_id: str, decision_id: str, snapsh
 
 def main() -> None:
     assert os.environ.get("GITHUB_ACTIONS") == "true"
-    assert os.environ.get("RR_E2E_CONTRACT_MODE") == "rr-plugin-v1"
+    assert os.environ.get("RR_E2E_CONTRACT_MODE") in {"rr-plugin-v1", "rr-oidc-session-v1"}
     assert "127.0.0.1:27019/qdip_e2e?" in os.environ.get("MONGODB_URL", "")
     key_a, key_b = os.environ["E2E_KEY_A"], os.environ["E2E_KEY_B"]
     base = Path(__file__).resolve().parents[1]

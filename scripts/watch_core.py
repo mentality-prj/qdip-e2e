@@ -66,17 +66,31 @@ def supported(sha: str, token: str) -> bool:
         return False
 
 
-def rr_contract_mode(sha: str, token: str) -> str:
-    """Once Core exposes plugin read models, force the new Core/Web real E2E.
+def rr_contract_mode(core_sha: str, obs_sha: str, token: str) -> str:
+    """Select strict contract tests from BOTH pinned Core and Web revisions.
 
-    The mode is derived from backend versioned source, not a potentially
-    incompatible frontend branch, so an unupgraded Observatory fails closed.
+    The OIDC data-plane gate uses a locally signed ephemeral session, not a
+    synthetic claim of successful login at the real external Zitadel issuer.
+    No authorization/network failure may downgrade an available Core contract.
     """
     try:
-        item = api(f"/repos/{CORE}/contents/{RR_PLUGIN_PRESENTATION}?ref={sha}", token)
-        return "rr-plugin-v1" if item.get("type") == "file" else "legacy"
+        item = api(f"/repos/{CORE}/contents/{RR_PLUGIN_PRESENTATION}?ref={core_sha}", token)
     except FileNotFoundError:
         return "legacy"
+    if item.get("type") != "file":
+        raise RuntimeError("Unsupported RR presentation resource type")
+    path = "src/app/api/rr-operator/session/route.ts"
+    web = api(f"/repos/{OBS}/contents/{path}?ref={obs_sha}", token)
+    if web.get("type") != "file" or not isinstance(web.get("content"), str):
+        raise RuntimeError("Missing Web RR authentication contract")
+    import base64 as _base64
+
+    code = _base64.b64decode(web["content"]).decode("utf-8")
+    if "Password authentication retired; use Zitadel OIDC" in code:
+        return "rr-oidc-session-v1"
+    if "createOperatorSession" in code and "verifyOperatorPassword" in code:
+        return "rr-plugin-v1"
+    raise RuntimeError("Unknown Web RR authorization contract; no test-mode fallback")
 
 
 def relevant_changes(previous: str | None, current: str, token: str) -> bool:
@@ -158,7 +172,7 @@ def main() -> int:
         prior = data["branches"].get(branch, {})
         previous_sha = prior.get("seen_sha")
         attempt = prior.get("last_attempt", {})
-        mode = rr_contract_mode(sha, source)
+        mode = rr_contract_mode(sha, obs_sha, source)
         key = hashlib.sha256(f"{sha}:{obs_sha}:{observed_suite}:{mode}".encode()).hexdigest()
         if not supported(sha, source):
             data["branches"][branch] = {**prior, "seen_sha": sha, "status": "UNSUPPORTED_RR"}

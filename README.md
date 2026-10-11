@@ -187,3 +187,35 @@ a separate external end-to-end gate requiring a configured Zitadel test
 account/issuer and matching Core/Web secrets. The default staged Web reference
 operator uses password authentication only for isolated data-plane E2E; it
 cannot qualify the final OIDC release.
+
+### Additional `rr-oidc-session-v1` Core/Web data-plane gate
+
+The independent E2E suite now has a **separate, explicitly labeled**
+`rr-oidc-session-v1` mode, intended for Core
+`feat/rr-plugin-computation-ownership` with Web `feat/qdip-zitadel-oidc`.
+It does not use the retired shared-password operator.
+
+For this mode the disposable runner creates **only synthetic**:
+`ZITADEL_ISSUER=https://qdip-e2e.invalid`,
+`ZITADEL_CLIENT_ID=qdip-e2e-client`, `QDIP_AUTH_OPERATOR_SUBJECTS`
+and `QDIP_AUTH_ALLOWED_SUBJECTS=qdip-e2e-operator`, a short-lived
+HMAC-signed QDIP browser session and independent random session/actor
+secrets. The browser exercises the actual BFF's authorization, signed
+pseudonymous Core actor attribution, Core HTTP/CP-SAT, Mongo persistence,
+read-model evidence, replanning and verified-page export without mocking
+any backend or persistence. It also checks that the retired password route
+returns 410 and untrusted guest requests return 401.
+
+**This does NOT authenticate with a real Zitadel issuer and does NOT
+qualify authorization-code exchange, registered callback, JWKS signature,
+token issuer/audience/state/nonce/PKCE or tenant/subject provisioning.**
+Those require a separate approved isolated Zitadel test identity and
+callback environment; no automated PASS here may substitute for them.
+This test explicitly labels the auth fixture as `ISOLATED_SIGNED_SESSION`.
+
+The watcher derives the strict test mode from both the checked-out Core
+presentation module and the pinned Web authentication source. Unknown Web
+authentication is rejected rather than downgraded. Manual invocation:
+Actions -> QDIP independent real E2E -> Run workflow, enter the pinned
+Core/Web refs and select `rr-oidc-session-v1`. The same missing
+`QDIP_READ_TOKEN` private-read prerequisite applies.
