@@ -1,6 +1,6 @@
 name: RR pinned Core–Web–Mongo isolated E2E
 run-name: RR isolated full-stack qualification
-# Sanitized first-line public browser-case diagnostics; no private traces.
+# ANSI-normalized status-and-selector-only diagnostics; no private traces.
 
 on:
   push:
