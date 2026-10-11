@@ -16,7 +16,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: qdip-ai/qdip-core
-          ref: 54b9bde270073db73d5ca9f7655ede08344d108a
+          ref: 1c0e01ef9d773125c24840bb828aa4f4d6e133a9
           token: ${{ secrets.QDIP_READ_TOKEN }}
           persist-credentials: false
           path: core
@@ -54,7 +54,7 @@ jobs:
         working-directory: core
         run: |
           set +e
-          python -m ruff check app/plugins/readiness_recovery/research_math.py app/plugins/readiness_recovery/research_legacy_engine.py app/plugins/readiness_recovery/research_legacy_domain.py app/plugins/readiness_recovery/actor_assertion.py app/plugins/readiness_recovery/presentation.py app/api/v1/readiness_recovery.py tests/plugins/readiness_recovery/test_research_math.py tests/plugins/readiness_recovery/test_research_legacy_engine.py tests/plugins/readiness_recovery/test_actor_assertion.py tests/plugins/readiness_recovery/test_presentation.py > "$RUNNER_TEMP/rr-ruff.log" 2>&1
+          python -m ruff check . > "$RUNNER_TEMP/rr-ruff.log" 2>&1
           result=$?
           echo "RR_RUFF_EXIT=$result"
           exit "$result"
