@@ -1,5 +1,5 @@
 name: RR Core-Web native integration E2E
-run-name: RR E2E Core 30c764c Web 0428252 host-gate fix
+run-name: RR E2E Core 30c764c Web 41a034c regex fix
 
 on:
   push:
@@ -70,7 +70,7 @@ jobs:
         with:
           repository: qdip-ai/qdip-web
           token: ${{ secrets.QDIP_READ_TOKEN }}
-          ref: 0428252a8453cbdfb9df0934b54d001b2e6da405
+          ref: 41a034cbfa3310c76ca3c3c6e31142d3ac8f34d0
           path: observatory
           persist-credentials: false
 
