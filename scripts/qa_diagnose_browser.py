@@ -53,6 +53,26 @@ def main() -> None:
             title = re.sub(r"[^a-zA-Z0-9_ \-]", "_", title)
             print("RR_BROWSER_TEST_NOT_PASS=" + title)
             print("RR_BROWSER_STATES=" + ",".join(states[:10]))
+            for item in spec.get("tests", []):
+                for result in item.get("results", []):
+                    for error in result.get("errors", []):
+                        message = str(error.get("message", ""))
+                        expected = re.search(r"Expected:\s*(\\d{3})", message)
+                        received = re.search(r"Received:\s*(\\d{3})", message)
+                        if expected or received:
+                            print("RR_BROWSER_EXPECTED_HTTP=" + (
+                                expected.group(1) if expected else "unknown"
+                            ))
+                            print("RR_BROWSER_RECEIVED_HTTP=" + (
+                                received.group(1) if received else "unknown"
+                            ))
+                        elif "Timeout" in message or "timeout" in message:
+                            print("RR_BROWSER_FAILURE_KIND=TIMEOUT")
+                        elif "toBeVisible" in message:
+                            print("RR_BROWSER_FAILURE_KIND=VISIBILITY")
+                        else:
+                            print("RR_BROWSER_FAILURE_KIND=OTHER")
+                        break
     print("RR_BROWSER_UNEXPECTED=" + str(report.get("stats", {}).get("unexpected", "unknown")))
     print("RR_BROWSER_SKIPPED=" + str(report.get("stats", {}).get("skipped", "unknown")))
 
