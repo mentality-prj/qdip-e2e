@@ -16,7 +16,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: qdip-ai/qdip-core
-          ref: 795a61109c888223afa059a9390be5378cd2a293
+          ref: de4870452ad5a30452e90e7b9ebd4856f043515b
           token: ${{ secrets.QDIP_READ_TOKEN }}
           persist-credentials: false
           path: core
@@ -87,7 +87,7 @@ jobs:
         working-directory: core
         run: |
           set +e
-          python -m mypy --show-error-codes app/plugins/readiness_recovery/research_math.py app/plugins/readiness_recovery/research_legacy_engine.py app/plugins/readiness_recovery/research_legacy_domain.py app/plugins/readiness_recovery/actor_assertion.py app/plugins/readiness_recovery/presentation.py app/api/v1/readiness_recovery.py > "$RUNNER_TEMP/rr-mypy.log" 2>&1
+          python -m mypy --show-error-codes app > "$RUNNER_TEMP/rr-mypy.log" 2>&1
           result=$?
           if [[ "$result" -ne 0 ]]; then
             # Only file+line+diagnostic-code appear in PUBLIC logs. The actual
