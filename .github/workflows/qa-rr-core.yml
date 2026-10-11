@@ -62,8 +62,26 @@ jobs:
         working-directory: core
         run: |
           set +e
-          python -m mypy app/plugins/readiness_recovery/research_math.py app/plugins/readiness_recovery/research_legacy_engine.py app/plugins/readiness_recovery/research_legacy_domain.py app/plugins/readiness_recovery/actor_assertion.py app/plugins/readiness_recovery/presentation.py app/api/v1/readiness_recovery.py > "$RUNNER_TEMP/rr-mypy.log" 2>&1
+          python -m mypy --show-error-codes app/plugins/readiness_recovery/research_math.py app/plugins/readiness_recovery/research_legacy_engine.py app/plugins/readiness_recovery/research_legacy_domain.py app/plugins/readiness_recovery/actor_assertion.py app/plugins/readiness_recovery/presentation.py app/api/v1/readiness_recovery.py > "$RUNNER_TEMP/rr-mypy.log" 2>&1
           result=$?
+          if [[ "$result" -ne 0 ]]; then
+            # Only file+line+diagnostic-code appear in PUBLIC logs. The actual
+            # private messages and source never leave the ephemeral runner.
+            python - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+          entries = Path(os.environ["RUNNER_TEMP"], "rr-mypy.log").read_text(encoding="utf-8")
+          found = False
+          for line in entries.splitlines():
+              match = re.match(r"^(app/[\\w./-]+\\.py):(\\d+)(?::\\d+)?: error: .*?(?: \\[([a-z0-9-]+)\\])?$", line)
+              if match:
+                  print(f"MYPY_DIAG={match.group(1)}:{match.group(2)}:{match.group(3) or 'uncategorized'}")
+                  found = True
+          if not found:
+              print("MYPY_DIAG=UNCLASSIFIED_FAILURE")
+          PY
+          fi
           echo "RR_MYPY_EXIT=$result"
           exit "$result"
       - name: Qualification marker (no private source or logs)
