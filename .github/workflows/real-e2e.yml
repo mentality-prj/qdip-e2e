@@ -10,7 +10,7 @@ on:
         description: "Backend branch or commit SHA"
         type: string
         required: true
-        default: feat/rr-prod-01-normalized-source-import
+        default: dev
       observatory_ref:
         description: "Observatory branch or commit SHA"
         type: string
