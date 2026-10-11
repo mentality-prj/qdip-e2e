@@ -3,7 +3,7 @@ import { createHmac } from 'node:crypto'
 import { expect, test } from '@playwright/test'
 
 // This spec is owned by the independent E2E suite and copied to the checked-out
-// qdip-web/e2e directory ONLY for the rr-oidc-session-v1 contract.
+// qdip-web/e2e directory ONLY when the rr-oidc-session-v1 contract is required.
 // The E2E fixture injects an ephemeral signed session; live Zitadel login is NOT tested.
 // HTTP, Core, Mongo persistence and BFF authorization are never mocked.
 const ORIGIN = 'http://observatory.localhost:3000'
@@ -24,13 +24,16 @@ type CivilianRequest = {
  * It deliberately does NOT test Zitadel login, PKCE, JWKS or callbacks.
  * Never use this fixture with production origin or production secrets.
  */
-async function installIsolatedOidcSession(page: import('@playwright/test').Page, role: 'rr' | 'studio' = 'rr') {
+async function installIsolatedOidcSession(
+  page: import('@playwright/test').Page,
+  role: 'rr' | 'studio' = 'rr'
+) {
   const secret = process.env.QDIP_WEB_SESSION_SIGNING_SECRET ?? ''
   const issuer = process.env.ZITADEL_ISSUER ?? ''
   const clientId = process.env.ZITADEL_CLIENT_ID ?? ''
   const rrSubject = process.env.QDIP_RR_ALLOWED_ZITADEL_USER_IDS ?? ''
   const studioSubject = process.env.QDIP_STUDIO_ALLOWED_ZITADEL_USER_IDS ?? ''
-  const subject = role === 'rr' ? rrSubject : studioSubject
+  const subject = role === 'studio' ? studioSubject : rrSubject
   if (secret.length < 32 || issuer !== 'https://qdip-e2e.invalid' || clientId !== 'qdip-e2e-client' ||
       rrSubject !== 'qdip-e2e-operator' || studioSubject !== 'qdip-e2e-studio-only' ||
       process.env.GITHUB_ACTIONS !== 'true')
@@ -52,7 +55,7 @@ async function installIsolatedOidcSession(page: import('@playwright/test').Page,
 
 function actualInput(): CivilianRequest {
   if (process.env.RR_E2E_CONTRACT_MODE !== 'rr-oidc-session-v1')
-    throw new Error('The isolated OIDC-session browser suite requires rr-oidc-session-v1 mode')
+    throw new Error('The real plugin browser suite requires rr-oidc-session-v1 mode')
   const path = process.env.RR_E2E_API_REQUEST_PATH
   if (!path)
     throw new Error('The disposable RR API request fixture is required')
@@ -65,6 +68,22 @@ function actualInput(): CivilianRequest {
   input.ingested_at = now
   input.payload.decision_id = `civilian-browser-${unique}`
   return input
+}
+
+// Only small predefined statuses/booleans are recorded; never persist a cookie,
+// response body, subject, or production credential in public runner evidence.
+function mark(label: string, value: number | boolean) {
+  test.info().annotations.push({ type: 'rr-' + label, description: String(value) })
+}
+
+async function markOperatorSession(page: import('@playwright/test').Page) {
+  const response = await page.request.get(`${ORIGIN}/api/rr-operator/session`)
+  mark('session-http', response.status())
+  if (response.status() === 200) {
+    const value = (await response.json()) as { configured?: boolean; authenticated?: boolean }
+    mark('session-configured', value.configured === true)
+    mark('session-authenticated', value.authenticated === true)
+  }
 }
 
 test('public RR is a read-only civilian input example, never a second solver', async ({ page }) => {
@@ -84,23 +103,32 @@ test('public RR is a read-only civilian input example, never a second solver', a
 
 test('anonymous browser cannot preflight, read Kernel evidence or export history', async ({ page }) => {
   const noPassword = await page.request.post(`${ORIGIN}/api/rr-operator/session`, { data: {password: 'obsolete'} })
-  expect(noPassword.status()).toBe(410)
   const preflight = await page.request.post(`${ROUTE}/preflight`, { data: {} })
-  expect(preflight.status()).toBe(401)
   const presentation = await page.request.get(`${ROUTE}/executions/not-allowed/presentation`)
-  expect(presentation.status()).toBe(401)
   const history = await page.request.get(`${ROUTE}/decisions/not-allowed/history/export-complete`)
+  mark('legacy-login-http', noPassword.status())
+  mark('anonymous-preflight-http', preflight.status())
+  mark('anonymous-presentation-http', presentation.status())
+  mark('anonymous-history-http', history.status())
+  await markOperatorSession(page)
+  expect(noPassword.status()).toBe(410)
+  expect(preflight.status()).toBe(401)
+  expect(presentation.status()).toBe(401)
   expect(history.status()).toBe(401)
 })
 
 test('Studio-only Zitadel subject cannot access RR operator', async ({ page }) => {
   await installIsolatedOidcSession(page, 'studio')
-  const session = await page.request.get(`${ORIGIN}/api/rr-operator/session`)
-  expect(session.status()).toBe(200)
-  const result = (await session.json()) as { configured: boolean; authenticated: boolean }
-  expect(result.configured).toBe(true)
-  expect(result.authenticated).toBe(false)
-  const denied = await page.request.get(`${ROUTE}/executions/denied/presentation`)
+  const globalSession = await page.request.get(`${ORIGIN}/api/auth/session`)
+  expect(globalSession.status()).toBe(200)
+  const identity = (await globalSession.json()) as { authenticated: boolean; studio: boolean; operator: boolean }
+  expect(identity.authenticated).toBe(true)
+  expect(identity.studio).toBe(true)
+  expect(identity.operator).toBe(false)
+  const operatorSession = await page.request.get(`${ORIGIN}/api/rr-operator/session`)
+  expect(operatorSession.status()).toBe(200)
+  expect(((await operatorSession.json()) as { authenticated: boolean }).authenticated).toBe(false)
+  const denied = await page.request.post(`${ROUTE}/preflight`, { data: {} })
   expect(denied.status()).toBe(401)
 })
 
@@ -115,6 +143,8 @@ test('tampered isolated OIDC session never authorizes the Web BFF', async ({ pag
     value: session.value.slice(0, -1) + (last === 'A' ? 'B' : 'A'),
   }])
   const denied = await page.request.get(`${ROUTE}/executions/denied/presentation`)
+  mark('tampered-presentation-http', denied.status())
+  await markOperatorSession(page)
   expect(denied.status()).toBe(401)
   const status = await page.request.get(`${ORIGIN}/api/rr-operator/session`)
   expect(status.status()).toBe(200)
@@ -125,10 +155,8 @@ test('live browser → Core preflight → CP-SAT → Mongo → decision-first �
   test.setTimeout(240_000)
   const original = actualInput()
   await installIsolatedOidcSession(page)
-  const sessionCheck = await page.request.get(`${ORIGIN}/api/rr-operator/session`)
-  expect(sessionCheck.status()).toBe(200)
-  expect(((await sessionCheck.json()) as { authenticated: boolean }).authenticated).toBe(true)
   await page.goto(PAGE, { waitUntil: 'domcontentloaded' })
+  await markOperatorSession(page)
   const panel = page.getByTestId('rr-production-operator')
   await expect(panel).toBeVisible()
   await expect(panel.getByRole('button', { name: 'Sign out' })).toBeVisible()
@@ -142,6 +170,17 @@ test('live browser → Core preflight → CP-SAT → Mongo → decision-first �
   )
   await panel.getByRole('button', { name: 'Create execution', exact: true }).click()
   const actualCreated = await createResponse
+  mark('execution-create-http', actualCreated.status())
+  const originHeader = actualCreated.request().headers()['origin']
+  mark('execution-create-origin-match', originHeader === ORIGIN)
+  if (actualCreated.status() !== 201) {
+    const body = (await actualCreated.json().catch(() => ({}))) as { error?: string; detail?: string }
+    mark('execution-create-forbidden-origin', body.error === 'Forbidden origin')
+    mark('execution-create-operator-unconfigured', body.error === 'RR operator mode is not configured')
+    mark('execution-create-operator-unauthorized', body.error === 'RR operator login required')
+    mark('execution-create-transport', body.error === 'TLS required')
+    mark('execution-create-backend-unavailable', body.error === 'RR backend unavailable')
+  }
   expect(actualCreated.status()).toBe(201)
   const persisted = (await actualCreated.json()) as {actor_id: string; audit_evidence: {actor_id: string}}
   expect(persisted.actor_id).toMatch(/^zitadel:[a-f0-9]{64}$/)
@@ -182,6 +221,7 @@ test('live browser → Core preflight → CP-SAT → Mongo → decision-first �
   )
   await panel.getByRole('button', { name: 'Replan from predecessor' }).click()
   const actualReplan = await replanResponse
+  mark('replan-http', actualReplan.status())
   expect(actualReplan.status()).toBe(201)
   const persistedRevision = (await actualReplan.json()) as {actor_id: string; audit_evidence: {actor_id: string}}
   expect(persistedRevision.actor_id).toBe(persisted.actor_id)
@@ -189,19 +229,27 @@ test('live browser → Core preflight → CP-SAT → Mongo → decision-first �
   await expect(summary).toBeVisible()
   await expect(summary.getByTestId('rr-kernel-evidence')).toContainText(successorId)
   await expect(summary.getByTestId('rr-kernel-schedule')).not.toContainText('sensor-service')
+  mark('replan-presentation', true)
 
   const historyResponse = page.waitForResponse((r) =>
     r.url().endsWith(`/decisions/${original.payload.decision_id}/history`)
   )
   await panel.getByRole('button', { name: 'History', exact: true }).click()
-  const history = await (await historyResponse).json() as { executions: unknown[] }
+  const actualHistory = await historyResponse
+  mark('history-http', actualHistory.status())
+  const history = await actualHistory.json() as { executions: unknown[] }
+  mark('history-two-executions', Array.isArray(history.executions) && history.executions.length === 2)
   expect(history.executions).toHaveLength(2)
 
   const replayResponse = page.waitForResponse((r) =>
     r.url().endsWith(`/executions/${successorId}/replay-verification`)
   )
   await panel.getByRole('button', { name: 'Replay' }).click()
-  expect(((await (await replayResponse).json()) as { verified: boolean }).verified).toBe(true)
+  const actualReplay = await replayResponse
+  mark('replay-http', actualReplay.status())
+  const replayValue = (await actualReplay.json()) as { verified: boolean }
+  mark('replay-verified', replayValue.verified)
+  expect(replayValue.verified).toBe(true)
 
   // Verify the exact Core/Web route in use. The client assembles a complete
   // export from independently attested pages; it does not call export-complete.
@@ -211,6 +259,7 @@ test('live browser → Core preflight → CP-SAT → Mongo → decision-first �
   const downloadPromise = page.waitForEvent('download')
   await panel.getByRole('button', { name: 'Export complete history' }).click()
   const verifiedResponse = await verifiedPage
+  mark('verified-export-page-http', verifiedResponse.status())
   expect(verifiedResponse.status()).toBe(200)
   const attestation = (await verifiedResponse.json()) as {
     history_manifest_digest: string
@@ -236,15 +285,26 @@ test('live browser → Core preflight → CP-SAT → Mongo → decision-first �
   expect(exported.history_verified).toBe(true)
   expect(exported.export_complete).toBe(true)
   expect(exported.executions).toHaveLength(2)
+  mark('verified-history-downloaded', true)
 
+  const logoutResponse = page.waitForResponse((r) =>
+    r.url().endsWith('/api/auth/logout') && r.request().method() === 'POST'
+  )
   await panel.getByRole('button', { name: 'Sign out' }).click()
-  expect((await page.request.get(`${ROUTE}/executions/${successorId}/presentation`)).status()).toBe(401)
+  const logout = await logoutResponse
+  mark('logout-http', logout.status())
+  expect(logout.status()).toBe(200)
+  await expect(panel.getByRole('button', { name: 'Sign out' })).not.toBeVisible()
+  const afterLogout = await page.request.get(`${ROUTE}/executions/${successorId}/presentation`)
+  mark('logout-revocation-http', afterLogout.status())
+  expect(afterLogout.status()).toBe(401)
 })
 
 test('invalid input fails closed in real Core preflight; no fabricated decision appears', async ({ page }) => {
   actualInput()
   await installIsolatedOidcSession(page)
   await page.goto(PAGE, { waitUntil: 'domcontentloaded' })
+  await markOperatorSession(page)
   const panel = page.getByTestId('rr-production-operator')
   await expect(panel.getByRole('button', { name: 'Sign out' })).toBeVisible()
   await panel.getByLabel('Kernel execution JSON').fill('{"execution_id":"invalid-input","source":{},"payload":{"jobs":[]}}')
