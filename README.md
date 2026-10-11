@@ -40,9 +40,7 @@ available. A stalled dispatch has one bounded retry after six hours.
 **Runner-cost guard:** both `watch-core.yml` AND
 `real-e2e.yml` use `if: github.event.repository.private == false`.
 When the E2E repository reports Private, neither scheduled nor manually
-started E2E jobs allocate a runner. **GitHub currently
-reports this repository as private**, so change its visibility to Public
-under `Settings → General → Danger Zone → Change repository visibility`.
+started E2E jobs allocate a runner. **This repository is now public.** The runner guard remains fail-closed if its visibility changes; verify source token and source-repo read grants before initiating a run.
 The API connector does not expose the visibility-changing operation.
 
 **Only one secret is required:** `QDIP_READ_TOKEN` in **this E2E repository**,
@@ -122,3 +120,55 @@ Backend roadmap [#270](https://github.com/mentality-prj/dzvin-intelligence-platf
 - Random test credentials are masked and are not included in uploaded artifacts.
 - Hosted-runner APT and pip/pnpm downloads are required; test output is retained for 7 days.
 - An Actions job that never started or fails to install a dependency is **NOT_RUN/FAIL**, never a PASS.
+
+## New: real shared Core/Web RR plugin-contract E2E
+
+These checks live in **this public independent suite**, not in qdip-core or
+qdip-web. The existing legacy E2E mode is retained for older Core SHA pairs;
+the new `rr-plugin-v1` mode is strict and **never silently falls back**.
+
+To test the staged backend+web implementation, use **Actions → QDIP independent
+real E2E → Run workflow** in this repository, with:
+
+- **backend_ref** = `feat/rr-plugin-computation-ownership` (or an immutable Core commit SHA);
+- **observatory_ref** = `fix/rr-ux-reverse-audit-integrity` (or a matched immutable Web SHA);
+- **rr_contract_mode** = `rr-plugin-v1`.
+
+The suite will record the exact checked-out Core/Web/E2E SHAs. This path
+requires the existing `QDIP_READ_TOKEN` Actions secret with **read-only access
+to both source repositories**. An earlier watcher failed because this secret
+was empty; this cannot be corrected by editing repository test code. Store it
+only in GitHub Actions secrets, never in logs, artifacts or chat messages.
+
+### Additional required test matrix (no mocks, no skipped cases)
+
+1. `scripts/http_rr_plugin_e2e.py`: real HTTP + native disposable Mongo
+   backend admission/preflight, negative credentials and malformed schema,
+   assertion that preflight did **not** persist an execution, actual CP-SAT
+   execution, persisted plugin presentation, cross-tenant denial, replan,
+   history, replay, and the plugin-attested complete export.
+2. `scripts/rr_plugin_browser.spec.ts`: four Chromium scenarios for a
+   guest-visible **input-only** civil reference; unauthenticated denial on
+   preflight/evidence/export; real reference-operator login → backend preflight
+   → actual Kernel execution → plugin read model → user-friendly job schedule
+   → replan → replay → verified export → logout; and fail-closed invalid input.
+   The test is copied into the checked-out Observatory's Playwright test
+   directory **only on the disposable E2E runner** so it resolves that
+   application's installed Playwright dependency; it never mocks the API.
+3. `scripts/check_browser_report.py` rejects missing, failed or skipped
+   required browser cases. The `rr-plugin-http` safe-stage reports a
+   `TEST_FAIL`, not a silent success.
+
+A successful old `legacy` suite result **does not** establish the new
+presentation/preflight/verified-export contract. Once Core `dev` ships
+`app/plugins/readiness_recovery/presentation.py`, the public Core watcher
+**automatically requires** `rr-plugin-v1` on subsequent runs and fails closed
+if Web `dev` has not yet been upgraded.
+
+**Security and release limits:** the browser case tests the restricted staging
+operator password, **not Zitadel OIDC**. The separate OIDC implementation must
+receive its own live login/permission/browser acceptance using approved test
+identities; this suite does not prove multi-tenant SSO, production SLA/HA,
+field effectiveness, ROI or customer acceptance. The new tests intentionally
+fail against unqualified Core/Web combinations; green static validation only
+means test scripts are syntactically valid, not that real E2E passed.

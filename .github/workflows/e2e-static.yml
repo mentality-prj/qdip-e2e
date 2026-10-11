@@ -2,7 +2,7 @@ name: Validate public E2E suite
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'test/**']
     paths:
       - '.github/workflows/**'
       - 'scripts/**'
@@ -33,3 +33,10 @@ jobs:
           python -m json.tool fixtures/rr_reference_api_v1.json >/dev/null
       - name: Check shell syntax
         run: bash -n scripts/*.sh
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate standalone Playwright TypeScript parse
+        run: node --experimental-strip-types --check scripts/rr_plugin_browser.spec.ts
+      - name: Validate fail-closed browser result checker
+        run: python -m unittest discover -s scripts -p 'test_e2e_*.py' -v

@@ -16,6 +16,14 @@ on:
         type: string
         required: true
         default: dev
+      rr_contract_mode:
+        description: "Required RR contract; plugin mode fails closed if either source revision is incompatible"
+        type: choice
+        required: true
+        options:
+          - legacy
+          - rr-plugin-v1
+        default: legacy
 
 permissions:
   contents: read
@@ -38,6 +46,7 @@ jobs:
       RR_TEST_MONGODB_URL: mongodb://127.0.0.1:27019/?replicaSet=rrtest&directConnection=true
       DIP_API_BASE_URL: http://127.0.0.1:8000
       RR_REFERENCE_OPERATOR_ENABLED: 'true'
+      RR_E2E_CONTRACT_MODE: ${{ github.event.client_payload.rr_contract_mode || inputs.rr_contract_mode || 'legacy' }}
     steps:
       - name: Checkout public independent E2E suite
         uses: actions/checkout@v4
@@ -112,6 +121,7 @@ jobs:
       - name: Scope-limited PASS
         run: |
           echo 'QDIP_REAL_NATIVE_E2E=PASS'
+          echo "RR_E2E_CONTRACT_MODE=$RR_E2E_CONTRACT_MODE"
           echo 'RR_PRODUCT_VERDICT=NOT_QUALIFIED'
           echo 'OIDC_PRODUCTION_AUTH=NOT_TESTED'
           echo 'HIGH_AVAILABILITY_SLA=NOT_TESTED'
@@ -133,6 +143,7 @@ jobs:
           path: |
             suite/reports/commits.txt
             suite/reports/http-e2e-summary.json
+            suite/reports/rr-plugin-contract-summary.json
             suite/reports/sdk-e2e-summary.json
           if-no-files-found: warn
           retention-days: 7
