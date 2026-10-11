@@ -81,7 +81,7 @@ jobs:
         with:
           repository: qdip-ai/qdip-core
           token: ${{ secrets.QDIP_READ_TOKEN }}
-          ref: ${{ github.event.client_payload.backend_sha || inputs.backend_ref || '6bfb033c8faeb46ec88023801f6cf38e84fb6b76' }}
+          ref: ${{ github.event.client_payload.backend_sha || inputs.backend_ref || '26b2cde0bcf090e3acf8b0c747b4acf01c53a35a' }}
           path: backend
           persist-credentials: false
 
