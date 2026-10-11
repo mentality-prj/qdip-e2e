@@ -1,0 +1,33 @@
+{
+  "branches": {
+    "dev": {
+      "last_attempt": {
+        "backend_sha": "df70e2a917a92f7afe32d5ac7d27a32b26a34604",
+        "count": 1,
+        "key": "3806210968d88bd9ffb3107cb0162f4497ba09150b1a812f6a8dcf447902ce0c",
+        "obs_sha": "787fc071d70cafd5dcb302eddb2754deddb75f37",
+        "requested_at": "2026-10-11T14:00:23.052169+00:00",
+        "rr_contract_mode": "legacy",
+        "status": "DISPATCHED",
+        "suite_fingerprint": "725f9e210fb982a402034b1a56a1ca10dcdb866d4d7fe79d8ca7e91d789f0ff4"
+      },
+      "seen_sha": "df70e2a917a92f7afe32d5ac7d27a32b26a34604",
+      "status": "DISPATCHED"
+    },
+    "feat/rr-plugin-computation-ownership": {
+      "last_attempt": {
+        "backend_sha": "1aa4842cb5154f4b55853f8efd4fd5993e3f1673",
+        "count": 1,
+        "key": "c122b11b0d9558c4297a05a830468712336821e6304ab9080051add959f1b37d",
+        "obs_sha": "2d1270e60173a8d438ec1b25f6d1b48b81d9d862",
+        "requested_at": "2026-10-11T14:00:23.052169+00:00",
+        "rr_contract_mode": "rr-oidc-session-v1",
+        "status": "DISPATCHED",
+        "suite_fingerprint": "725f9e210fb982a402034b1a56a1ca10dcdb866d4d7fe79d8ca7e91d789f0ff4"
+      },
+      "seen_sha": "1aa4842cb5154f4b55853f8efd4fd5993e3f1673",
+      "status": "DISPATCHED"
+    }
+  },
+  "version": 1
+}
