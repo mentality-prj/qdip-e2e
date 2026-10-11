@@ -25,12 +25,6 @@ jobs:
     env:
       PYTHONUNBUFFERED: '1'
       NEXT_TELEMETRY_DISABLED: '1'
-      # Match the isolated Chromium's actual localhost cookie/SSO topology.
-      # Otherwise logout clears a qdip.ai Domain cookie instead of the
-      # host-only observatory.localhost test cookie.
-      NEXT_PUBLIC_SITE_URL: http://qdip.localhost:3000
-      NEXT_PUBLIC_STUDIO_URL: http://studio.localhost:3000
-      NEXT_PUBLIC_OBSERVATORY_URL: http://observatory.localhost:3000
       MONGODB_URL: mongodb://127.0.0.1:27019/qdip_e2e?replicaSet=rrtest&directConnection=true
       RR_TEST_MONGODB_URL: mongodb://127.0.0.1:27019/?replicaSet=rrtest&directConnection=true
       DIP_API_BASE_URL: http://127.0.0.1:8000
