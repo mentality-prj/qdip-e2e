@@ -177,6 +177,41 @@ def main() -> None:
             "actor_id"
         ] == expected_actor
 
+        actor_later = now + timedelta(seconds=3)
+        actor_replan = {
+            "execution_id": f"rr-actor-{suffix}-002",
+            "change_id": f"actor-change-{suffix}",
+            "kind": "OVERRIDE",
+            "reason": "Exclude invented sensor-service after synthetic signed attribution.",
+            "requested_at": actor_later.isoformat(),
+            "source": actor_input["source"],
+            "ingested_at": actor_later.isoformat(),
+            "payload": {
+                **actor_input["payload"],
+                "operator_directives": {"excluded_job_ids": ["sensor-service"]},
+            },
+        }
+        bad_replan = call(
+            client, "POST", f"/executions/{actor_input['execution_id']}/replan",
+            key_a, payload=actor_replan, actor_assertion=ok_assertion,
+        )
+        assert bad_replan.status_code == 403, "Execute-only signature cannot authorize replan"
+        replan_assertion, _ = signed_actor(operation="replan", expires=int(time.time()) + 30)
+        actor_revision = expected(
+            call(
+                client, "POST", f"/executions/{actor_input['execution_id']}/replan",
+                key_a, payload=actor_replan, actor_assertion=replan_assertion,
+            ),
+            201,
+        )
+        assert actor_revision["actor_id"] == expected_actor
+        assert actor_revision["result"]["workflow"]["change"]["predecessor_execution_id"] == actor_input[
+            "execution_id"
+        ]
+        assert expected(
+            call(client, "GET", f"/executions/{actor_replan['execution_id']}", key_a), 200
+        )["actor_id"] == expected_actor
+
         # New persisted revision and plugin-computed evidence, never inferred by UI.
         later = now + timedelta(seconds=2)
         revision = {
