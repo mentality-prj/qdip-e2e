@@ -51,6 +51,7 @@ case "$RR_E2E_CONTRACT_MODE" in
       exit 2
     fi
     SPEC='e2e/rr_oidc_session_real_e2e.spec.ts'
+    python suite/scripts/check_oidc_session_contract.py
     ;;
   *)
     SPEC='e2e/rr-production-operator.spec.ts'
