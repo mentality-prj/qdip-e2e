@@ -1,5 +1,5 @@
 name: RR Core-Web native integration E2E
-run-name: RR E2E Core 30c764c Web 41a034c regex fix
+run-name: RR E2E Core 08b8161 Web 41a034c final
 
 on:
   push:
@@ -61,7 +61,7 @@ jobs:
         with:
           repository: qdip-ai/qdip-core
           token: ${{ secrets.QDIP_READ_TOKEN }}
-          ref: 30c764c2074e67d546761cf9af0406fd29020ecc
+          ref: 08b816199c7e238c0ed13cc00986ec5fc4eb098f
           path: backend
           persist-credentials: false
 
