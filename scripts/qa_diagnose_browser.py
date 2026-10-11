@@ -57,8 +57,8 @@ def main() -> None:
                 for result in item.get("results", []):
                     for error in result.get("errors", []):
                         message = str(error.get("message", ""))
-                        expected = re.search(r"Expected:\s*(\\d{3})", message)
-                        received = re.search(r"Received:\s*(\\d{3})", message)
+                        expected = re.search(r"Expected:\s*(\d{3})", message)
+                        received = re.search(r"Received:\s*(\d{3})", message)
                         if expected or received:
                             print("RR_BROWSER_EXPECTED_HTTP=" + (
                                 expected.group(1) if expected else "unknown"
