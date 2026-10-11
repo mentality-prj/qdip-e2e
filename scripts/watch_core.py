@@ -21,8 +21,11 @@ API = "https://api.github.com"
 CORE = "qdip-ai/qdip-core"
 OBS = "qdip-ai/qdip-web"
 TARGET = "qdip-ai/qdip-e2e"
-BRANCHES = ("feat/rr-prod-01-normalized-source-import", "dev")
-OBS_BRANCH = "dev"
+BRANCHES = ("feat/rr-plugin-computation-ownership", "dev")
+OBS_BRANCHES = {
+    "feat/rr-plugin-computation-ownership": "feat/qdip-zitadel-oidc",
+    "dev": "dev",
+}
 LEDGER = ".state/core-watch.json"
 RR_CONTRACT = "app/plugins/readiness_recovery/reference_proof.py"
 RR_PLUGIN_PRESENTATION = "app/plugins/readiness_recovery/presentation.py"
@@ -147,11 +150,11 @@ def write_ledger(data: dict, existing_sha: str | None, token: str) -> None:
     api(f"/repos/{TARGET}/contents/{quote(LEDGER, safe='/')}", token, body=payload, method="PUT")
 
 
-def dispatch(branch: str, sha: str, token: str, mode: str) -> None:
+def dispatch(branch: str, sha: str, token: str, mode: str, obs_branch: str) -> None:
     api(f"/repos/{TARGET}/dispatches", token,
         body={"event_type": "qdip-core-updated",
               "client_payload": {"repository": CORE, "backend_sha": sha, "backend_branch": branch,
-                                 "observatory_ref": OBS_BRANCH,
+                                 "observatory_ref": obs_branch,
                                  "rr_contract_mode": mode}})
 
 
@@ -163,11 +166,12 @@ def main() -> int:
         print("QDIP_E2E_WATCH=MISSING_CREDENTIALS", file=sys.stderr)
         return 2
     observed_suite = fingerprint()
-    obs_sha = head(OBS, OBS_BRANCH, source)
     data, etag = read_ledger(target)
     updated = False
     now = datetime.now(UTC)
     for branch in BRANCHES:
+        obs_branch = OBS_BRANCHES[branch]
+        obs_sha = head(OBS, obs_branch, source)
         sha = head(CORE, branch, source)
         prior = data["branches"].get(branch, {})
         previous_sha = prior.get("seen_sha")
@@ -200,7 +204,7 @@ def main() -> int:
             updated = True
             print(f"QDIP_WATCH_UNRELATED={branch}")
             continue
-        dispatch(branch, sha, target, mode)
+        dispatch(branch, sha, target, mode, obs_branch)
         count = int(attempt.get("count", 0)) + 1 if attempt.get("key") == key else 1
         data["branches"][branch] = {"seen_sha": sha, "status": "DISPATCHED",
                                    "last_attempt": {"key": key, "backend_sha": sha, "obs_sha": obs_sha,

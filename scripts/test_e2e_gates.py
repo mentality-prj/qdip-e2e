@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import check_browser_report
 import watch_core
+import verify_dispatch
 
 
 def report(mode: str) -> dict:
@@ -88,6 +89,27 @@ class IsolatedOidcFixtureTests(unittest.TestCase):
             if not spec["title"].startswith("Studio-only Zitadel subject")
         ]
         self.assertFalse(check_browser_report.validate(test_report, "rr-oidc-session-v1"))
+
+
+class ActiveQualificationRefTests(unittest.TestCase):
+    def test_rr_feature_tracks_current_web_feature_and_not_retired_branch(self) -> None:
+        current = "feat/rr-plugin-computation-ownership"
+        self.assertIn(current, watch_core.BRANCHES)
+        self.assertNotIn("feat/rr-prod-01-normalized-source-import", watch_core.BRANCHES)
+        self.assertEqual(watch_core.OBS_BRANCHES[current], "feat/qdip-zitadel-oidc")
+        self.assertEqual(watch_core.OBS_BRANCHES["dev"], "dev")
+
+    def test_dispatch_refuses_cross_product_branch_pair_before_any_network(self) -> None:
+        environment = {
+            "BACKEND_SHA": "a" * 40,
+            "BACKEND_BRANCH": "feat/rr-plugin-computation-ownership",
+            "OBSERVATORY_REF": "dev",
+            "QDIP_READ_TOKEN": "not-a-real-token",
+        }
+        with patch.dict("os.environ", environment), patch.object(verify_dispatch, "get") as remote:
+            with self.assertRaisesRegex(RuntimeError, "mismatched Core/Web"):
+                verify_dispatch.main()
+            remote.assert_not_called()
 
 
 class ContractDiscoveryTests(unittest.TestCase):

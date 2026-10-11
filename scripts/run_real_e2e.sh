@@ -43,7 +43,6 @@ case "$RR_E2E_CONTRACT_MODE" in
       echo 'RR_E2E_AUTH_MODE_MISMATCH=OIDC_REQUIRES_SESSION_TEST' >&2
       exit 2
     fi
-    cp suite/scripts/rr_plugin_browser.spec.ts observatory/e2e/rr_plugin_real_e2e.spec.ts
     SPEC='e2e/rr_plugin_real_e2e.spec.ts'
     ;;
   rr-oidc-session-v1)
@@ -51,7 +50,6 @@ case "$RR_E2E_CONTRACT_MODE" in
       echo 'RR_E2E_AUTH_MODE_MISMATCH=EXPECTED_ZITADEL_BFF' >&2
       exit 2
     fi
-    cp suite/scripts/rr_oidc_session_browser.spec.ts observatory/e2e/rr_oidc_session_real_e2e.spec.ts
     SPEC='e2e/rr_oidc_session_real_e2e.spec.ts'
     ;;
   *)
@@ -63,6 +61,7 @@ esac
   python ../suite/scripts/safe_stage.py --timeout 700 observatory-install -- pnpm install --frozen-lockfile
   python ../suite/scripts/safe_stage.py --timeout 300 observatory-lint -- pnpm lint
   python ../suite/scripts/safe_stage.py --timeout 300 observatory-typecheck -- pnpm typecheck
+  python ../suite/scripts/safe_stage.py --timeout 300 observatory-format -- pnpm prettier
   python ../suite/scripts/safe_stage.py --timeout 300 observatory-unit -- pnpm test
   # Only the built browser app uses localhost origins; the unit tests above
   # must retain their production-default routing contracts.
@@ -74,6 +73,11 @@ esac
   python ../suite/scripts/safe_stage.py --timeout 700 observatory-build -- pnpm build
   python ../suite/scripts/safe_stage.py --timeout 700 browser-install -- pnpm exec playwright install --with-deps chromium
 )
+if [[ "$RR_E2E_CONTRACT_MODE" == "rr-oidc-session-v1" ]]; then
+  cp suite/scripts/rr_oidc_session_browser.spec.ts observatory/e2e/rr_oidc_session_real_e2e.spec.ts
+elif [[ "$RR_E2E_CONTRACT_MODE" == "rr-plugin-v1" ]]; then
+  cp suite/scripts/rr_plugin_browser.spec.ts observatory/e2e/rr_plugin_real_e2e.spec.ts
+fi
 python suite/scripts/safe_stage.py --timeout 180 sdk-install -- bash suite/scripts/start_remote_worker.sh
 python suite/scripts/safe_stage.py --timeout 180 sdk-e2e -- python suite/scripts/http_sdk_e2e.py
 python suite/scripts/safe_stage.py --timeout 80 sdk-negative -- python suite/scripts/check_remote_worker_failure.py

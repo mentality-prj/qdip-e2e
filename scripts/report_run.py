@@ -31,7 +31,8 @@ def main():
     failing = next((x["stage"] for x in observed if x["status"] != "PASS"), None)
     expected_test_stages = {
         "mongodb-integration", "mongodb-recovery", "backend-http", "rr-plugin-http",
-        "backend-restart-verify", "observatory-unit", "sdk-e2e", "sdk-negative", "rr-auth-revocation", "browser-e2e", "test-report",
+        "backend-restart-verify", "core-quality", "rr-actor-unit", "rr-actor-ruff",
+        "observatory-unit", "observatory-format", "sdk-e2e", "sdk-negative", "rr-auth-revocation", "browser-e2e", "test-report",
     }
     terminal = ("PASS" if os.environ.get("E2E_JOB_STATUS") == "success" else
                 "TEST_FAIL" if failing in expected_test_stages else "INFRA_FAIL")
