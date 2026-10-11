@@ -208,19 +208,27 @@ test('live browser → Core preflight → CP-SAT → Mongo → decision-first �
   await expect(summary).toBeVisible()
   await expect(summary.getByTestId('rr-kernel-evidence')).toContainText(successorId)
   await expect(summary.getByTestId('rr-kernel-schedule')).not.toContainText('sensor-service')
+  mark('replan-presentation', true)
 
   const historyResponse = page.waitForResponse((r) =>
     r.url().endsWith(`/decisions/${original.payload.decision_id}/history`)
   )
   await panel.getByRole('button', { name: 'History', exact: true }).click()
-  const history = await (await historyResponse).json() as { executions: unknown[] }
+  const actualHistory = await historyResponse
+  mark('history-http', actualHistory.status())
+  const history = await actualHistory.json() as { executions: unknown[] }
+  mark('history-two-executions', Array.isArray(history.executions) && history.executions.length === 2)
   expect(history.executions).toHaveLength(2)
 
   const replayResponse = page.waitForResponse((r) =>
     r.url().endsWith(`/executions/${successorId}/replay-verification`)
   )
   await panel.getByRole('button', { name: 'Replay' }).click()
-  expect(((await (await replayResponse).json()) as { verified: boolean }).verified).toBe(true)
+  const actualReplay = await replayResponse
+  mark('replay-http', actualReplay.status())
+  const replayValue = (await actualReplay.json()) as { verified: boolean }
+  mark('replay-verified', replayValue.verified)
+  expect(replayValue.verified).toBe(true)
 
   // Verify the exact Core/Web route in use. The client assembles a complete
   // export from independently attested pages; it does not call export-complete.
@@ -230,6 +238,7 @@ test('live browser → Core preflight → CP-SAT → Mongo → decision-first �
   const downloadPromise = page.waitForEvent('download')
   await panel.getByRole('button', { name: 'Export complete history' }).click()
   const verifiedResponse = await verifiedPage
+  mark('verified-export-page-http', verifiedResponse.status())
   expect(verifiedResponse.status()).toBe(200)
   const attestation = (await verifiedResponse.json()) as {
     history_manifest_digest: string
@@ -255,9 +264,19 @@ test('live browser → Core preflight → CP-SAT → Mongo → decision-first �
   expect(exported.history_verified).toBe(true)
   expect(exported.export_complete).toBe(true)
   expect(exported.executions).toHaveLength(2)
+  mark('verified-history-downloaded', true)
 
+  const logoutResponse = page.waitForResponse((r) =>
+    r.url().endsWith('/api/auth/logout') && r.request().method() === 'POST'
+  )
   await panel.getByRole('button', { name: 'Sign out' }).click()
-  expect((await page.request.get(`${ROUTE}/executions/${successorId}/presentation`)).status()).toBe(401)
+  const logout = await logoutResponse
+  mark('logout-http', logout.status())
+  expect(logout.status()).toBe(200)
+  await expect(panel.getByRole('button', { name: 'Sign out' })).not.toBeVisible()
+  const afterLogout = await page.request.get(`${ROUTE}/executions/${successorId}/presentation`)
+  mark('logout-revocation-http', afterLogout.status())
+  expect(afterLogout.status()).toBe(401)
 })
 
 test('invalid input fails closed in real Core preflight; no fabricated decision appears', async ({ page }) => {
