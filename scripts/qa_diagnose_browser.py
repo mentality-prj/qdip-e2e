@@ -57,6 +57,7 @@ def main() -> None:
                 for result in item.get("results", []):
                     for error in result.get("errors", []):
                         message = str(error.get("message", ""))
+                        message = re.sub(r"\x1b\[[0-9;]*m", "", message)
                         first_line = message.splitlines()[0] if message else "EMPTY"
                         first_line = re.sub(
                             r"[^A-Za-z0-9 ():._/-]", "_", first_line
@@ -64,6 +65,10 @@ def main() -> None:
                         print("RR_BROWSER_FAILURE_FIRST_LINE=" + first_line)
                         expected = re.search(r"Expected:\s*(\d{3})", message)
                         received = re.search(r"Received:\s*(\d{3})", message)
+                        locator = re.search(r"Locator:\s*([^\n]{1,110})", message)
+                        if locator:
+                            safe_locator = re.sub(r"[^A-Za-z0-9_ /()'.:-]", "_", locator.group(1))[:110]
+                            print("RR_BROWSER_LOCATOR=" + safe_locator)
                         if expected or received:
                             print("RR_BROWSER_EXPECTED_HTTP=" + (
                                 expected.group(1) if expected else "unknown"
