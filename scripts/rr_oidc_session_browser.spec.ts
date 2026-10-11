@@ -3,7 +3,7 @@ import { createHmac } from 'node:crypto'
 import { expect, test } from '@playwright/test'
 
 // This spec is owned by the independent E2E suite and copied to the checked-out
-// qdip-web/e2e directory ONLY when the rr-plugin-v1 contract is required.
+// qdip-web/e2e directory ONLY when the rr-oidc-session-v1 contract is required.
 // The E2E fixture injects an ephemeral signed session; live Zitadel login is NOT tested.
 // HTTP, Core, Mongo persistence and BFF authorization are never mocked.
 const ORIGIN = 'http://observatory.localhost:3000'
@@ -25,10 +25,10 @@ type CivilianRequest = {
  * Never use this fixture with production origin or production secrets.
  */
 async function installIsolatedOidcSession(page: import('@playwright/test').Page) {
-  const secret = process.env.QDIP_AUTH_COOKIE_SECRET ?? ''
+  const secret = process.env.QDIP_WEB_SESSION_SIGNING_SECRET ?? ''
   const issuer = process.env.ZITADEL_ISSUER ?? ''
   const clientId = process.env.ZITADEL_CLIENT_ID ?? ''
-  const subject = process.env.QDIP_AUTH_OPERATOR_SUBJECTS ?? ''
+  const subject = process.env.QDIP_RR_ALLOWED_ZITADEL_USER_IDS ?? ''
   if (secret.length < 32 || issuer !== 'https://qdip-e2e.invalid' || clientId !== 'qdip-e2e-client' ||
       subject !== 'qdip-e2e-operator' || process.env.GITHUB_ACTIONS !== 'true')
     throw new Error('Isolated OIDC-session test configuration is missing or unsafe')
@@ -49,7 +49,7 @@ async function installIsolatedOidcSession(page: import('@playwright/test').Page)
 
 function actualInput(): CivilianRequest {
   if (process.env.RR_E2E_CONTRACT_MODE !== 'rr-oidc-session-v1')
-    throw new Error('The real plugin browser suite requires rr-plugin-v1 mode')
+    throw new Error('The real plugin browser suite requires rr-oidc-session-v1 mode')
   const path = process.env.RR_E2E_API_REQUEST_PATH
   if (!path)
     throw new Error('The disposable RR API request fixture is required')

@@ -1,0 +1,150 @@
+name: RR Core-Web native integration E2E
+run-name: RR E2E pinned Core 30c764c Web 8aa0b78
+
+on:
+  repository_dispatch:
+    types: [qdip-core-updated]
+  workflow_dispatch:
+    inputs:
+      backend_ref:
+        description: "Backend branch or commit SHA"
+        type: string
+        required: true
+        default: feat/rr-prod-01-normalized-source-import
+      observatory_ref:
+        description: "Observatory branch or commit SHA"
+        type: string
+        required: true
+        default: dev
+      rr_contract_mode:
+        description: "Required RR contract; plugin mode fails closed if either source revision is incompatible"
+        type: choice
+        required: true
+        options:
+          - legacy
+          - rr-plugin-v1
+          - rr-oidc-session-v1
+        default: legacy
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qdip-real-e2e-${{ github.event_name }}-${{ github.event.client_payload.backend_branch || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  integration:
+    if: github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    permissions:
+      contents: read
+    env:
+      PYTHONUNBUFFERED: '1'
+      NEXT_TELEMETRY_DISABLED: '1'
+      MONGODB_URL: mongodb://127.0.0.1:27019/qdip_e2e?replicaSet=rrtest&directConnection=true
+      RR_TEST_MONGODB_URL: mongodb://127.0.0.1:27019/?replicaSet=rrtest&directConnection=true
+      DIP_API_BASE_URL: http://127.0.0.1:8000
+      RR_REFERENCE_OPERATOR_ENABLED: 'true'
+      RR_E2E_CONTRACT_MODE: rr-oidc-session-v1
+    steps:
+      - name: Checkout public independent E2E suite
+        uses: actions/checkout@v4
+        with:
+          path: suite
+          persist-credentials: false
+
+      - name: Configure ephemeral reference path
+        run: echo "RR_E2E_API_REQUEST_PATH=$RUNNER_TEMP/rr-reference-request.json" >> "$GITHUB_ENV"
+
+      - name: Validate E2E workflow with actionlint before private source checkout
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 suite/.github/workflows/*.yml
+
+      - name: Require restricted source read credential
+        env:
+          SOURCE_TOKEN: ${{ secrets.QDIP_READ_TOKEN }}
+        run: test -n "$SOURCE_TOKEN"
+
+      - name: Validate automated dispatch provenance
+        if: always()
+        env:
+          BACKEND_SHA: ${{ github.event.client_payload.backend_sha }}
+          BACKEND_BRANCH: ${{ github.event.client_payload.backend_branch }}
+          QDIP_READ_TOKEN: ${{ secrets.QDIP_READ_TOKEN }}
+        run: python suite/scripts/verify_dispatch.py
+
+      - name: Checkout private QDIP backend at pinned SHA
+        uses: actions/checkout@v4
+        with:
+          repository: qdip-ai/qdip-core
+          token: ${{ secrets.QDIP_READ_TOKEN }}
+          ref: 30c764c2074e67d546761cf9af0406fd29020ecc
+          path: backend
+          persist-credentials: false
+
+      - name: Checkout actual Observatory at pinned ref
+        uses: actions/checkout@v4
+        with:
+          repository: qdip-ai/qdip-web
+          token: ${{ secrets.QDIP_READ_TOKEN }}
+          ref: 8aa0b78e602dbeaf9c3991ca82e1e3600e7b126b
+          path: observatory
+          persist-credentials: false
+
+      - name: Record exact source commit SHAs
+        shell: bash
+        run: |
+          mkdir -p suite/reports
+          printf 'QDIP_BACKEND_SHA=%s\n' "$(git -C backend rev-parse HEAD)" > suite/reports/commits.txt
+          printf 'QDIP_OBSERVATORY_SHA=%s\n' "$(git -C observatory rev-parse HEAD)" >> suite/reports/commits.txt
+          printf 'QDIP_E2E_SHA=%s\n' "$(git -C suite rev-parse HEAD)" >> suite/reports/commits.txt
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.22.0
+          run_install: false
+
+      - name: Bootstrap real native MongoDB and persisted backend records
+        shell: bash
+        run: bash suite/scripts/bootstrap_native.sh
+
+      - name: Run real RR HTTP, restart, SDK Worker and Chromium E2E
+        shell: bash
+        run: bash suite/scripts/run_real_e2e.sh
+
+      - name: Scope-limited PASS
+        run: |
+          echo 'QDIP_PINNED_RR_E2E=PASS'
+          echo "RR_E2E_CONTRACT_MODE=$RR_E2E_CONTRACT_MODE"
+          echo 'RR_PRODUCT_VERDICT=NOT_QUALIFIED'
+          echo 'OIDC_PRODUCTION_AUTH=NOT_TESTED'
+          echo 'HIGH_AVAILABILITY_SLA=NOT_TESTED'
+
+      - name: Upload sanitized stage statuses only
+        if: always() && github.event_name == 'repository_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: qdip-e2e-phase-statuses
+          path: ${{ runner.temp }}/qdip-stage-results.jsonl
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Publish sanitized evidence (no raw private logs)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qdip-native-e2e-evidence
+          path: |
+            suite/reports/commits.txt
+            suite/reports/http-e2e-summary.json
+            suite/reports/rr-plugin-contract-summary.json
+            suite/reports/sdk-e2e-summary.json
+          if-no-files-found: warn
+          retention-days: 7
