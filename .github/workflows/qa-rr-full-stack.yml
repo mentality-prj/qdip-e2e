@@ -1,6 +1,6 @@
 name: RR pinned Core–Web–Mongo isolated E2E
 run-name: RR isolated full-stack qualification
-# Corrected numeric-only Playwright HTTP expectation diagnostics; no raw traces.
+# Sanitized first-line public browser-case diagnostics; no private traces.
 
 on:
   push:
