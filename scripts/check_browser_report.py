@@ -25,9 +25,9 @@ MATRIX: dict[str, tuple[str, ...]] = {
         "anonymous browser cannot preflight",
         "isolated signed Studio-only role cannot access RR operator",
         "signed RR role with wrong project, organization, issuer or expiry is denied",
-        "anonymous and Studio-only browser cannot open the economic operator",
+        "anonymous and Studio-only browser cannot operate RR",
         "tampered isolated OIDC session never authorizes",
-        "live browser → Core preflight",
+        "isolated signed-session browser → real Core",
         "invalid input fails closed in real Core preflight",
     ),
     "rr-plugin-v1": (
