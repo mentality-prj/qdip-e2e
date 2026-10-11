@@ -60,15 +60,15 @@ def main() -> None:
             ("HTTP_STATUS", r"(status|Response|Received:|Expected:)"),
             ("TIMEOUT", r"(timeout|exceeded)"),
             ("SESSION_CONFIG", r"(Isolated OIDC-session test configuration|QDIP_AUTH|not configured)"),
-            ("ASSERTION", r"(AssertionError|expect\\()"),
+            ("ASSERTION", r"(AssertionError|expect\()"),
         ]
         categories = [key for key, pattern in kinds if re.search(pattern, combined, re.IGNORECASE)]
         print(f"BROWSER_CASE_{idx+1}_ERROR_CATEGORIES=" + (",".join(categories) or "UNKNOWN"))
-        num_match = re.search(r"Expected:\\s*(\\d{3})[\\s\\S]{0,160}?Received:\\s*(\\d{3})", combined)
+        num_match = re.search(r"Expected:\s*(\d{3})[\s\S]{0,160}?Received:\s*(\d{3})", combined)
         if num_match:
             print(f"BROWSER_CASE_{idx+1}_EXPECTED_HTTP={num_match.group(1)}")
             print(f"BROWSER_CASE_{idx+1}_RECEIVED_HTTP={num_match.group(2)}")
-        locations = sorted(set(re.findall(r"rr_oidc_session_real_e2e\\.spec\\.ts:(\\d+)", combined)))
+        locations = sorted(set(re.findall(r"rr_oidc_session_real_e2e\.spec\.ts:(\d+)", combined)))
         if locations:
             print(f"BROWSER_CASE_{idx+1}_PUBLIC_SPEC_LINES=" + ",".join(locations[:4]))
     stats = report.get("stats", {})
