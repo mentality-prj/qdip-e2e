@@ -54,8 +54,24 @@ jobs:
         working-directory: core
         run: |
           set +e
-          python -m ruff check . > "$RUNNER_TEMP/rr-ruff.log" 2>&1
+          python -m ruff check . --output-format concise > "$RUNNER_TEMP/rr-ruff.log" 2>&1
           result=$?
+          if [[ "$result" -ne 0 ]]; then
+            python - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+          data = Path(os.environ["RUNNER_TEMP"], "rr-ruff.log").read_text(encoding="utf-8")
+          found = False
+          for line in data.splitlines():
+              match = re.match(r"^((?:app|tests)/[A-Za-z0-9_./-]+[.]py):([0-9]+):([0-9]+): ([A-Z]+[0-9]+):", line)
+              if match:
+                  print(f"RR_RUFF_DIAG={match.group(1)}:{match.group(2)}:{match.group(4)}")
+                  found = True
+          if not found:
+              print("RR_RUFF_DIAG=UNCLASSIFIED_FAILURE")
+          PY
+          fi
           echo "RR_RUFF_EXIT=$result"
           exit "$result"
       - name: Core mypy quality
