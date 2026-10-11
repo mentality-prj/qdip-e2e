@@ -1,5 +1,47 @@
 # QDIP independent end-to-end tests
 
+## Current Web role/session contract (2026-10-11)
+
+The public hosted E2E suite's `rr-oidc-session-v1` mode exercises the real
+qdip-web operator authorization and real Core/Mongo persistence, but only
+with **isolated, test-only signed cookies**. It is not a real Zitadel login.
+
+- Canonical source of truth: `qdip-web/src/lib/qdip-oidc.ts`, using
+  `QDIP_AUTH_COOKIE_SECRET`, `ZITADEL_QDIP_PROJECT_ID`,
+  `ZITADEL_QDIP_ORGANIZATION_ID`, and roles `rr_operator`/`studio`.
+  A previous suite used the obsolete `QDIP_WEB_SESSION_SIGNING_SECRET`
+  and a session body without project/org/roles. That older PASS **cannot**
+  qualify the present Web auth flow.
+- Disposable `scripts/provision_tenants.py` generates a fresh test-only
+  cookie key and fake project/org/subject IDs, never using production secrets.
+  Required Chromium cases test signed RR access as well as anonymous,
+  studio-only, tampered, wrong-project, wrong-org, invalid-issuer and expired
+  sessions against the real BFF. Each must pass with no skips. The suite
+  asserts an authenticated RR browser **before** using the real Core API.
+- `scripts/check_oidc_session_contract.py` detects drift between Web source
+  and E2E signer before starting browser tests. This static check alone
+  is **not** an authorization PASS.
+- Automatic watcher now follows only `Core/dev + Web/dev`, not old merged
+  feature-branch pairs. A Web SHA change participates in the qualification
+  identity even if Core SHA is unchanged. Manual runs can pin both SHAs
+  to test a staged Web PR without merging it.
+- A green test-mode result is printed as
+  `QDIP_AUTH_SIGNED_SESSION_INTEGRATION=PASS`; live Zitadel authorize,
+  actual browser redirect, code exchange, token signature/JWKS, PKCE,
+  issuer/client registration and real Zitadel role issuance stay explicitly
+  `QDIP_AUTH_LIVE_ZITADEL_OIDC=NOT_TESTED` until a **separate isolated
+  real-Zitadel test account and callback environment** are configured.
+  Do not report auth production qualification based on signed-cookie tests.
+
+To run on the independent public GitHub runner (no local Playwright/Docker),
+select `rr-oidc-session-v1` and immutable `backend_ref` /`observatory_ref`.
+The `QDIP_READ_TOKEN` GitHub Actions secret must be able to read both source
+repositories. **Never disclose it in a chat or public repository.**
+No changes to Web's real `QDIP_AUTH_COOKIE_SECRET` are necessary.
+
+---
+
+
 Independent GitHub Actions suite (manual E2E and public-repository SHA polling) for [QDIP](https://github.com/mentality-prj/dzvin-intelligence-platform) and [Observatory](https://github.com/mentality-prj/dip-observatory).
 
 **Runs native MongoDB 8.0 replica set, FastAPI, Kernel/CP-SAT, independent Python SDK Worker, Next.js and Chromium Playwright on a GitHub-hosted Ubuntu runner. No Docker, no in-process fake persistence and no customer data.**
@@ -7,8 +49,8 @@ Independent GitHub Actions suite (manual E2E and public-repository SHA polling) 
 ## Launch
 
 1. Set **this E2E repository to Public**. The backend can remain private. Scheduled polling is disabled at the job level while this E2E repository is Private.
-2. Configure repository secret `QDIP_READ_TOKEN`: fine-grained token with **Contents: Read-only** on exactly `mentality-prj/dzvin-intelligence-platform` and `mentality-prj/dip-observatory`. Never commit a token, use it as an Actions input, or expose it in logs. This public test repo does not need private source copied into it.
-3. In **Actions → QDIP independent real E2E → Run workflow** choose source refs (defaults: backend `feat/rr-prod-01-normalized-source-import`, Observatory `dev`).
+2. Configure repository secret `QDIP_READ_TOKEN`: fine-grained token with **Contents: Read-only** on exactly `qdip-ai/qdip-core` and `qdip-ai/qdip-web`. Never commit a token, use it as an Actions input, or expose it in logs. This public test repo does not need private source copied into it.
+3. In **Actions → QDIP independent real E2E → Run workflow** choose source refs (defaults: backend `dev`, Observatory `dev`).
 4. Read the **individual step results** and downloaded sanitized evidence artifact. All tested checkout SHAs are recorded.
 
 The expensive test workflow accepts `workflow_dispatch` and `repository_dispatch` only. A separate lightweight `Watch QDIP Core (no Core Actions)` workflow polls once per hour at minute 17 UTC. Neither workflow runs on E2E repository pushes or PRs. Repository secrets are not available to unauthenticated visitors or ordinary public PRs.
