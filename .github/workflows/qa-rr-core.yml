@@ -74,9 +74,11 @@ jobs:
           entries = Path(os.environ["RUNNER_TEMP"], "rr-mypy.log").read_text(encoding="utf-8")
           found = False
           for line in entries.splitlines():
-              match = re.match(r"^(app/[\\w./-]+\\.py):(\\d+)(?::\\d+)?: error: .*?(?: \\[([a-z0-9-]+)\\])?$", line)
-              if match:
-                  print(f"MYPY_DIAG={match.group(1)}:{match.group(2)}:{match.group(3) or 'uncategorized'}")
+              prefix, sep, message = line.partition(": error: ")
+              match = re.match(r"^(app/[A-Za-z0-9_./-]+[.]py):([0-9]+)(?::[0-9]+)?$", prefix)
+              if sep and match:
+                  category = message.rsplit(" [", 1)[-1].removesuffix("]") if message.endswith("]") else "uncategorized"
+                  print(f"MYPY_DIAG={match.group(1)}:{match.group(2)}:{category}")
                   found = True
           if not found:
               print("MYPY_DIAG=UNCLASSIFIED_FAILURE")
