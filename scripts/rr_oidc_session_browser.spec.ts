@@ -187,7 +187,7 @@ test('signed RR role with wrong project, organization, issuer or expiry is denie
   }
 })
 
-test('anonymous and Studio-only browser cannot open the economic operator', async ({ page }) => {
+test('anonymous and Studio-only browser cannot operate RR', async ({ page }) => {
   await page.goto(PAGE, { waitUntil: 'domcontentloaded' })
   const anonymous = await page.request.get(`${ORIGIN}/api/auth/session`)
   expect(anonymous.status()).toBe(200)
@@ -220,7 +220,7 @@ test('tampered isolated OIDC session never authorizes the Web BFF', async ({ pag
   expect(((await status.json()) as {authenticated: boolean}).authenticated).toBe(false)
 })
 
-test('live browser → Core preflight → CP-SAT → Mongo → decision-first → replan → verified export', async ({ page }) => {
+test('isolated signed-session browser → real Core → CP-SAT → Mongo → replan → verified export', async ({ page }) => {
   test.setTimeout(240_000)
   const original = actualInput()
   await installIsolatedOidcSession(page)
