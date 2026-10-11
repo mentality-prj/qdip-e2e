@@ -2,7 +2,7 @@ name: Validate public E2E suite
 
 on:
   push:
-    branches: [main, 'test/**']
+    branches: [main, 'test/**', 'fix/**']
     paths:
       - '.github/workflows/**'
       - 'scripts/**'
