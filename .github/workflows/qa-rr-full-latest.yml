@@ -1,6 +1,6 @@
 name: RR pinned Core–Web–Mongo isolated E2E
 run-name: RR full E2E latest suite (6 Chromium cases)
-# Corrected numeric-only Playwright HTTP expectation diagnostics; no raw traces.
+# Verify six-case current E2E; native Mongo version check avoids SIGPIPE under pipefail.
 
 on:
   push:
