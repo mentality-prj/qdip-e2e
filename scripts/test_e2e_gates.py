@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import check_browser_report
@@ -43,6 +44,29 @@ class BrowserGateTests(unittest.TestCase):
 
     def test_unknown_contract_never_falls_back(self) -> None:
         self.assertFalse(check_browser_report.validate(report("legacy"), "unknown"))
+
+
+class IsolatedOidcContractTests(unittest.TestCase):
+    def test_e2e_session_uses_current_zitadel_environment_contract(self) -> None:
+        bootstrap = Path("scripts/provision_tenants.py").read_text(encoding="utf-8")
+        browser = Path("scripts/rr_oidc_session_browser.spec.ts").read_text(encoding="utf-8")
+        for key in (
+            "QDIP_WEB_SESSION_SIGNING_SECRET",
+            "QDIP_RR_ALLOWED_ZITADEL_USER_IDS",
+            "ZITADEL_ISSUER",
+            "ZITADEL_CLIENT_ID",
+            "RR_ACTOR_ASSERTION_SECRET",
+        ):
+            self.assertIn(key, bootstrap)
+        for key in ("QDIP_WEB_SESSION_SIGNING_SECRET", "QDIP_RR_ALLOWED_ZITADEL_USER_IDS"):
+            self.assertIn(key, browser)
+        for legacy in (
+            "QDIP_AUTH_COOKIE_SECRET",
+            "QDIP_AUTH_OPERATOR_SUBJECTS",
+            "QDIP_AUTH_ALLOWED_SUBJECTS",
+        ):
+            self.assertNotIn(legacy, bootstrap)
+            self.assertNotIn(legacy, browser)
 
 
 class ContractDiscoveryTests(unittest.TestCase):
