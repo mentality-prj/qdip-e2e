@@ -4,7 +4,8 @@ import { expect, test } from '@playwright/test'
 
 // This spec is owned by the independent E2E suite and copied to the checked-out
 // qdip-web/e2e directory ONLY when the rr-plugin-v1 contract is required.
-// Never mock HTTP, cookies, the Kernel, persistence, or browser authentication.
+// The E2E fixture injects an ephemeral signed session; live Zitadel login is NOT tested.
+// HTTP, Core, Mongo persistence and BFF authorization are never mocked.
 const ORIGIN = 'http://observatory.localhost:3000'
 const PAGE = `${ORIGIN}/en/readiness-recovery`
 const ROUTE = `${ORIGIN}/api/rr-operator/kernel`
@@ -87,6 +88,23 @@ test('anonymous browser cannot preflight, read Kernel evidence or export history
   expect(presentation.status()).toBe(401)
   const history = await page.request.get(`${ROUTE}/decisions/not-allowed/history/export-complete`)
   expect(history.status()).toBe(401)
+})
+
+test('tampered isolated OIDC session never authorizes the Web BFF', async ({ page }) => {
+  await installIsolatedOidcSession(page)
+  const cookies = await page.context().cookies(ORIGIN)
+  const session = cookies.find((cookie) => cookie.name === 'qdip_oidc_session')
+  if (!session) throw new Error('Isolated browser session cookie missing')
+  const last = session.value.slice(-1)
+  await page.context().addCookies([{
+    ...session,
+    value: session.value.slice(0, -1) + (last === 'A' ? 'B' : 'A'),
+  }])
+  const denied = await page.request.get(`${ROUTE}/executions/denied/presentation`)
+  expect(denied.status()).toBe(401)
+  const status = await page.request.get(`${ORIGIN}/api/rr-operator/session`)
+  expect(status.status()).toBe(200)
+  expect(((await status.json()) as {authenticated: boolean}).authenticated).toBe(false)
 })
 
 test('live browser → Core preflight → CP-SAT → Mongo → decision-first → replan → verified export', async ({ page }) => {
