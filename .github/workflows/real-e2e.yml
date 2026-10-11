@@ -71,6 +71,7 @@ jobs:
         env:
           BACKEND_SHA: ${{ github.event.client_payload.backend_sha }}
           BACKEND_BRANCH: ${{ github.event.client_payload.backend_branch }}
+          OBSERVATORY_REF: ${{ github.event.client_payload.observatory_ref }}
           QDIP_READ_TOKEN: ${{ secrets.QDIP_READ_TOKEN }}
         run: python suite/scripts/verify_dispatch.py
 
