@@ -16,7 +16,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: qdip-ai/qdip-core
-          ref: 30c764c2074e67d546761cf9af0406fd29020ecc
+          ref: 08b816199c7e238c0ed13cc00986ec5fc4eb098f
           token: ${{ secrets.QDIP_READ_TOKEN }}
           persist-credentials: false
           path: core
