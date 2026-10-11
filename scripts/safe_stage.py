@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -66,6 +67,18 @@ def main() -> int:
     # Separate sanitized phase ledger for final TEST_FAIL vs INFRA_FAIL status.
     with (Path(temp) / "qdip-stage-results.jsonl").open("a", encoding="utf-8") as out:
         out.write(json.dumps({"stage": args.stage, "status": status}) + chr(10))
+    if args.stage == "rr-plugin-http" and status == "FAIL":
+        # Public script source line numbers and HTTP status class only. Never
+        # output arbitrary exception strings, request bodies, keys or private traces.
+        raw = path.read_text(encoding="utf-8", errors="replace")
+        sites = re.findall(r'File "[^"\\n]*http_rr_plugin_e2e\\.py", line ([0-9]{1,4})', raw)
+        if sites:
+            print("RR_PLUGIN_E2E_PUBLIC_LINES=" + ",".join(sites[-4:]))
+        statuses = re.findall(r"RR plugin contract: expected ([1-5][0-9]{2}), got ([1-5][0-9]{2})", raw)
+        if statuses:
+            wanted, observed = statuses[-1]
+            print(f"RR_PLUGIN_E2E_EXPECTED_HTTP={wanted}")
+            print(f"RR_PLUGIN_E2E_OBSERVED_HTTP={observed}")
     print(f"QDIP_STAGE_{args.stage.upper().replace('-', '_')}={status}")
     return 0 if status == "PASS" else 1
 
