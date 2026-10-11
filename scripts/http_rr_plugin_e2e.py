@@ -266,9 +266,11 @@ def main() -> None:
             call(client, "GET", f"/decisions/{race_initial['payload']['decision_id']}/history", key_a), 200
         )
         assert len(race_history["executions"]) == 2
-        assert call(
-            client, "GET", f"/decisions/{race_initial['payload']['decision_id']}/history", key_b
-        ).status_code in (403, 404, 409)
+        other_tenant = expected(
+            call(client, "GET", f"/decisions/{race_initial['payload']['decision_id']}/history", key_b),
+            200,
+        )
+        assert other_tenant["executions"] == [], "Cross-organization history must be empty"
 
         # New persisted revision and plugin-computed evidence, never inferred by UI.
         later = now + timedelta(seconds=2)
