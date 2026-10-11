@@ -91,7 +91,7 @@ jobs:
         with:
           repository: qdip-ai/qdip-web
           token: ${{ secrets.QDIP_READ_TOKEN }}
-          ref: ${{ github.event.client_payload.observatory_ref || inputs.observatory_ref || '6baaff52ba73c8241985112a73965c55f201b277' }}
+          ref: ${{ github.event.client_payload.observatory_ref || inputs.observatory_ref || '2d1270e60173a8d438ec1b25f6d1b48b81d9d862' }}
           path: observatory
           persist-credentials: false
 
