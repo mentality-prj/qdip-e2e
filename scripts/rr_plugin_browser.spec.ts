@@ -129,19 +129,36 @@ test('live browser → Core preflight → CP-SAT → Mongo → decision-first �
   await panel.getByRole('button', { name: 'Replay' }).click()
   expect(((await (await replayResponse).json()) as { verified: boolean }).verified).toBe(true)
 
+  // Verify the exact Core/Web route in use. The client assembles a complete
+  // export from independently attested pages; it does not call export-complete.
+  const verifiedPage = page.waitForResponse((r) =>
+    r.url().includes(`/decisions/${original.payload.decision_id}/history/verified-export-page`)
+  )
   const downloadPromise = page.waitForEvent('download')
   await panel.getByRole('button', { name: 'Export complete history' }).click()
+  const verifiedResponse = await verifiedPage
+  expect(verifiedResponse.status()).toBe(200)
+  const attestation = (await verifiedResponse.json()) as {
+    history_manifest_digest: string
+    head_execution_id: string
+    history_verified: boolean
+  }
+  expect(attestation.history_verified).toBe(true)
+  expect(attestation.head_execution_id).toBe(successorId)
+  expect(attestation.history_manifest_digest).toMatch(/^[a-f0-9]{64}$/)
   const downloaded = await downloadPromise
   expect(downloaded.suggestedFilename()).toBe(`rr-history-${original.payload.decision_id}.json`)
   const saved = await downloaded.path()
   if (!saved) throw new Error('Verified history download did not produce a local file')
   const exported = JSON.parse(readFileSync(saved, 'utf8')) as {
     head_execution_id: string
+    history_manifest_digest: string
     history_verified: boolean
     export_complete: boolean
     executions: unknown[]
   }
   expect(exported.head_execution_id).toBe(successorId)
+  expect(exported.history_manifest_digest).toBe(attestation.history_manifest_digest)
   expect(exported.history_verified).toBe(true)
   expect(exported.export_complete).toBe(true)
   expect(exported.executions).toHaveLength(2)
