@@ -211,7 +211,7 @@ def main() -> None:
             key_a, payload=actor_replan, actor_assertion=ok_assertion,
         )
         assert bad_replan.status_code == 403, "Execute-only signature cannot authorize replan"
-        replan_assertion, _ = signed_actor(operation="replan", expires=int(time.time()) + 30)
+        replan_assertion, _ = signed_actor(operation="replan", expires=int(time.time()) + 30, api_key=key_a)
         actor_revision = expected(
             call(
                 client, "POST", f"/executions/{actor_input['execution_id']}/replan",
