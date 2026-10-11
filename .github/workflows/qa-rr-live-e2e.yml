@@ -1,5 +1,5 @@
 name: RR Core-Web native integration E2E
-run-name: RR E2E pinned Core 30c764c Web 6f4f384
+run-name: RR E2E Core 30c764c Web 0428252 host-gate fix
 
 on:
   push:
@@ -70,7 +70,7 @@ jobs:
         with:
           repository: qdip-ai/qdip-web
           token: ${{ secrets.QDIP_READ_TOKEN }}
-          ref: 6f4f384a0669326344fefec9f92a43805ca36412
+          ref: 0428252a8453cbdfb9df0934b54d001b2e6da405
           path: observatory
           persist-credentials: false
 
