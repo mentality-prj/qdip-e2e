@@ -1,0 +1,70 @@
+name: RR Core focused qualification
+on:
+  push:
+    branches: [qa/rr-core-focused-qualification]
+    paths: [.github/workflows/qa-rr-core.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  focused:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    if: github.event.repository.private == false
+    steps:
+      - name: Checkout private Core read-only at pinned immutable SHA
+        uses: actions/checkout@v4
+        with:
+          repository: qdip-ai/qdip-core
+          ref: 6a309e6c249659430aaa8055efe78467ad83afa3
+          token: ${{ secrets.QDIP_READ_TOKEN }}
+          persist-credentials: false
+          path: core
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Core dependencies with private output suppressed
+        run: |
+          set +e
+          python -m pip install -e './core[dev]' > "$RUNNER_TEMP/rr-pip.log" 2>&1
+          result=$?
+          echo "RR_INSTALL_EXIT=$result"
+          exit "$result"
+      - name: Core Python bytecode syntax
+        run: |
+          python -m compileall -q core/app/plugins/readiness_recovery core/app/api/v1/readiness_recovery.py core/tests/plugins/readiness_recovery
+          echo 'RR_SYNTAX=PASS'
+      - name: Research mathematical regression tests
+        working-directory: core
+        run: |
+          set +e
+          python -m pytest -q tests/plugins/readiness_recovery/test_research_math.py tests/plugins/readiness_recovery/test_research_legacy_engine.py > "$RUNNER_TEMP/rr-math.log" 2>&1
+          result=$?
+          echo "RR_MATH_TESTS_EXIT=$result"
+          exit "$result"
+      - name: Core presentation and identity audit tests
+        working-directory: core
+        run: |
+          set +e
+          python -m pytest -q tests/plugins/readiness_recovery/test_presentation.py tests/plugins/readiness_recovery/test_actor_assertion.py > "$RUNNER_TEMP/rr-presentation.log" 2>&1
+          result=$?
+          echo "RR_PRESENTATION_TESTS_EXIT=$result"
+          exit "$result"
+      - name: Core Ruff quality
+        working-directory: core
+        run: |
+          set +e
+          python -m ruff check app/plugins/readiness_recovery/research_math.py app/plugins/readiness_recovery/research_legacy_engine.py app/plugins/readiness_recovery/research_legacy_domain.py app/plugins/readiness_recovery/actor_assertion.py app/plugins/readiness_recovery/presentation.py app/api/v1/readiness_recovery.py tests/plugins/readiness_recovery/test_research_math.py tests/plugins/readiness_recovery/test_research_legacy_engine.py tests/plugins/readiness_recovery/test_actor_assertion.py tests/plugins/readiness_recovery/test_presentation.py > "$RUNNER_TEMP/rr-ruff.log" 2>&1
+          result=$?
+          echo "RR_RUFF_EXIT=$result"
+          exit "$result"
+      - name: Core mypy quality
+        working-directory: core
+        run: |
+          set +e
+          python -m mypy app/plugins/readiness_recovery/research_math.py app/plugins/readiness_recovery/research_legacy_engine.py app/plugins/readiness_recovery/research_legacy_domain.py app/plugins/readiness_recovery/actor_assertion.py app/plugins/readiness_recovery/presentation.py app/api/v1/readiness_recovery.py > "$RUNNER_TEMP/rr-mypy.log" 2>&1
+          result=$?
+          echo "RR_MYPY_EXIT=$result"
+          exit "$result"
+      - name: Qualification marker (no private source or logs)
+        run: echo 'RR_CORE_FOCUSED=PASS; LIVE_MONGO_AND_ZITADEL_NOT_TESTED'
