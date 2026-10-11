@@ -63,6 +63,7 @@ esac
   python ../suite/scripts/safe_stage.py --timeout 700 observatory-install -- pnpm install --frozen-lockfile
   python ../suite/scripts/safe_stage.py --timeout 300 observatory-lint -- pnpm lint
   python ../suite/scripts/safe_stage.py --timeout 300 observatory-typecheck -- pnpm typecheck
+  python ../suite/scripts/safe_stage.py --timeout 300 observatory-format -- pnpm prettier
   python ../suite/scripts/safe_stage.py --timeout 300 observatory-unit -- pnpm test
   # Only the built browser app uses localhost origins; the unit tests above
   # must retain their production-default routing contracts.
