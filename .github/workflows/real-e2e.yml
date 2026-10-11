@@ -2,6 +2,8 @@ name: QDIP independent real E2E
 run-name: QDIP E2E ${{ github.event.client_payload.backend_sha || inputs.backend_ref || github.sha }}
 
 on:
+  push:
+    branches: ['test/rr-pinned-final-20261011']
   repository_dispatch:
     types: [qdip-core-updated]
   workflow_dispatch:
@@ -47,7 +49,7 @@ jobs:
       RR_TEST_MONGODB_URL: mongodb://127.0.0.1:27019/?replicaSet=rrtest&directConnection=true
       DIP_API_BASE_URL: http://127.0.0.1:8000
       RR_REFERENCE_OPERATOR_ENABLED: 'true'
-      RR_E2E_CONTRACT_MODE: ${{ github.event.client_payload.rr_contract_mode || inputs.rr_contract_mode || 'legacy' }}
+      RR_E2E_CONTRACT_MODE: ${{ github.event.client_payload.rr_contract_mode || inputs.rr_contract_mode || 'rr-oidc-session-v1' }}
     steps:
       - name: Checkout public independent E2E suite
         uses: actions/checkout@v4
@@ -79,7 +81,7 @@ jobs:
         with:
           repository: qdip-ai/qdip-core
           token: ${{ secrets.QDIP_READ_TOKEN }}
-          ref: ${{ github.event.client_payload.backend_sha || inputs.backend_ref || 'dev' }}
+          ref: ${{ github.event.client_payload.backend_sha || inputs.backend_ref || '08b816199c7e238c0ed13cc00986ec5fc4eb098f' }}
           path: backend
           persist-credentials: false
 
@@ -88,7 +90,7 @@ jobs:
         with:
           repository: qdip-ai/qdip-web
           token: ${{ secrets.QDIP_READ_TOKEN }}
-          ref: ${{ github.event.client_payload.observatory_ref || inputs.observatory_ref || 'dev' }}
+          ref: ${{ github.event.client_payload.observatory_ref || inputs.observatory_ref || '41a034cbfa3310c76ca3c3c6e31142d3ac8f34d0' }}
           path: observatory
           persist-credentials: false
 
