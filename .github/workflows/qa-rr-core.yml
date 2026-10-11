@@ -16,7 +16,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: qdip-ai/qdip-core
-          ref: c407201ea1eb40155305e9c702281d057134bbf9
+          ref: e6181872c02493d5f49b7ec3bc73813ad996ea62
           token: ${{ secrets.QDIP_READ_TOKEN }}
           persist-credentials: false
           path: core
@@ -54,22 +54,31 @@ jobs:
         working-directory: core
         run: |
           set +e
-          python -m ruff check . --output-format concise > "$RUNNER_TEMP/rr-ruff.log" 2>&1
+          python -m ruff check . --output-format json > "$RUNNER_TEMP/rr-ruff.log" 2>&1
           result=$?
           if [[ "$result" -ne 0 ]]; then
             python - <<'PY'
+          import json
           import os
-          import re
           from pathlib import Path
-          data = Path(os.environ["RUNNER_TEMP"], "rr-ruff.log").read_text(encoding="utf-8")
-          found = False
-          for line in data.splitlines():
-              match = re.match(r"^((?:app|tests)/[A-Za-z0-9_./-]+[.]py):([0-9]+):([0-9]+): ([A-Z]+[0-9]+):", line)
-              if match:
-                  print(f"RR_RUFF_DIAG={match.group(1)}:{match.group(2)}:{match.group(4)}")
-                  found = True
-          if not found:
-              print("RR_RUFF_DIAG=UNCLASSIFIED_FAILURE")
+          raw = Path(os.environ["RUNNER_TEMP"], "rr-ruff.log").read_text(encoding="utf-8")
+          try:
+              diagnostics = json.loads(raw)
+          except json.JSONDecodeError:
+              diagnostics = None
+          if isinstance(diagnostics, list):
+              print("RR_RUFF_DIAGNOSTIC_COUNT=" + str(len(diagnostics)))
+              for item in diagnostics[:40]:
+                  if not isinstance(item, dict):
+                      continue
+                  name = str(item.get("filename", ""))
+                  rel = name.rsplit("/core/", 1)[-1].replace("\\", "/")
+                  line = item.get("location", {}).get("row", "?")
+                  code = str(item.get("code", "UNKNOWN"))
+                  if rel.startswith(("app/", "tests/")) and code.isalnum():
+                      print(f"RR_RUFF_DIAG={rel}:{line}:{code}")
+          else:
+              print("RR_RUFF_DIAG=INVALID_JSON_OUTPUT")
           PY
           fi
           echo "RR_RUFF_EXIT=$result"
