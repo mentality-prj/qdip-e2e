@@ -64,6 +64,13 @@ esac
   python ../suite/scripts/safe_stage.py --timeout 300 observatory-lint -- pnpm lint
   python ../suite/scripts/safe_stage.py --timeout 300 observatory-typecheck -- pnpm typecheck
   python ../suite/scripts/safe_stage.py --timeout 300 observatory-unit -- pnpm test
+  # Only the built browser app uses localhost origins; the unit tests above
+  # must retain their production-default routing contracts.
+  if [[ "$RR_E2E_CONTRACT_MODE" == "rr-oidc-session-v1" ]]; then
+    export NEXT_PUBLIC_SITE_URL=http://qdip.localhost:3000
+    export NEXT_PUBLIC_STUDIO_URL=http://studio.localhost:3000
+    export NEXT_PUBLIC_OBSERVATORY_URL=http://observatory.localhost:3000
+  fi
   python ../suite/scripts/safe_stage.py --timeout 700 observatory-build -- pnpm build
   python ../suite/scripts/safe_stage.py --timeout 700 browser-install -- pnpm exec playwright install --with-deps chromium
 )
@@ -74,6 +81,11 @@ echo '127.0.0.1 observatory.localhost' | sudo tee -a /etc/hosts >/dev/null
 test -s "$RR_E2E_API_REQUEST_PATH"
 (
   cd observatory
+  if [[ "$RR_E2E_CONTRACT_MODE" == "rr-oidc-session-v1" ]]; then
+    export NEXT_PUBLIC_SITE_URL=http://qdip.localhost:3000
+    export NEXT_PUBLIC_STUDIO_URL=http://studio.localhost:3000
+    export NEXT_PUBLIC_OBSERVATORY_URL=http://observatory.localhost:3000
+  fi
   python ../suite/scripts/safe_stage.py --timeout 350 \
     --output "$RUNNER_TEMP/qdip-browser-report.json" browser-e2e -- \
     pnpm exec playwright test "$SPEC" \
