@@ -2,8 +2,6 @@ name: QDIP independent real E2E
 run-name: QDIP E2E ${{ github.event.client_payload.backend_sha || inputs.backend_ref || github.sha }}
 
 on:
-  push:
-    branches: ['fix/rr-qualification-reverse-audit-20261011']
   repository_dispatch:
     types: [qdip-core-updated]
   workflow_dispatch:
@@ -82,7 +80,7 @@ jobs:
         with:
           repository: qdip-ai/qdip-core
           token: ${{ secrets.QDIP_READ_TOKEN }}
-          ref: ${{ github.event.client_payload.backend_sha || inputs.backend_ref || '1aa4842cb5154f4b55853f8efd4fd5993e3f1673' }}
+          ref: ${{ github.event.client_payload.backend_sha || inputs.backend_ref || 'dev' }}
           path: backend
           persist-credentials: false
 
@@ -91,7 +89,7 @@ jobs:
         with:
           repository: qdip-ai/qdip-web
           token: ${{ secrets.QDIP_READ_TOKEN }}
-          ref: ${{ github.event.client_payload.observatory_ref || inputs.observatory_ref || '2d1270e60173a8d438ec1b25f6d1b48b81d9d862' }}
+          ref: ${{ github.event.client_payload.observatory_ref || inputs.observatory_ref || 'dev' }}
           path: observatory
           persist-credentials: false
 
