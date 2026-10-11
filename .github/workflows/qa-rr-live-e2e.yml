@@ -101,6 +101,10 @@ jobs:
         shell: bash
         run: bash suite/scripts/run_real_e2e.sh
 
+      - name: Sanitized browser case diagnostics on failure
+        if: failure()
+        run: python suite/scripts/report_browser_failures.py
+
       - name: Scope-limited PASS
         run: |
           echo 'QDIP_PINNED_RR_E2E=PASS'
