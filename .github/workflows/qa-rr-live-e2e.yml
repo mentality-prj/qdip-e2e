@@ -101,7 +101,7 @@ jobs:
         shell: bash
         run: bash suite/scripts/run_real_e2e.sh
 
-      - name: Sanitized browser case diagnostics on failure
+      - name: Sanitized browser case diagnostics on failure (v2)
         if: failure()
         run: python suite/scripts/report_browser_failures.py
 
