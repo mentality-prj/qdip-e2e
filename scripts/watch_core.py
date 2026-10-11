@@ -21,11 +21,10 @@ API = "https://api.github.com"
 CORE = "qdip-ai/qdip-core"
 OBS = "qdip-ai/qdip-web"
 TARGET = "qdip-ai/qdip-e2e"
-BRANCHES = ("feat/rr-plugin-computation-ownership", "dev")
-OBS_BRANCHES = {
-    "feat/rr-plugin-computation-ownership": "feat/qdip-zitadel-oidc",
-    "dev": "dev",
-}
+# Only the canonical dev pair can qualify the current integrated product.
+# Old feature branches remain preserved as historical records in the ledger.
+BRANCHES = ("dev",)
+OBS_BRANCHES = {"dev": "dev"}
 LEDGER = ".state/core-watch.json"
 RR_CONTRACT = "app/plugins/readiness_recovery/reference_proof.py"
 RR_PLUGIN_PRESENTATION = "app/plugins/readiness_recovery/presentation.py"
