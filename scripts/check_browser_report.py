@@ -23,6 +23,7 @@ MATRIX: dict[str, tuple[str, ...]] = {
     "rr-oidc-session-v1": (
         "public RR is a read-only civilian input example",
         "anonymous browser cannot preflight",
+        "tampered isolated OIDC session never authorizes",
         "live browser → Core preflight",
         "invalid input fails closed in real Core preflight",
     ),
