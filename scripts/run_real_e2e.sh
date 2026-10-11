@@ -7,7 +7,7 @@ test -n "$RR_E2E_OPERATOR_PASSWORD"
 test -n "$RR_E2E_API_REQUEST_PATH"
 RR_E2E_CONTRACT_MODE="${RR_E2E_CONTRACT_MODE:-legacy}"
 case "$RR_E2E_CONTRACT_MODE" in
-  legacy|rr-plugin-v1) ;;
+  legacy|rr-plugin-v1|rr-oidc-session-v1) ;;
   *) echo 'RR_E2E_CONTRACT_MODE=INVALID' >&2; exit 2 ;;
 esac
 (cd backend && exec python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 \
@@ -20,7 +20,7 @@ curl --fail --silent --retry 35 --retry-delay 1 --retry-connrefused \
   python ../suite/scripts/safe_stage.py --timeout 180 backend-http -- \
     python ../suite/scripts/http_rr_e2e.py
 )
-if [[ "$RR_E2E_CONTRACT_MODE" == "rr-plugin-v1" ]]; then
+if [[ "$RR_E2E_CONTRACT_MODE" != "legacy" ]]; then
   (
     cd backend
     python ../suite/scripts/safe_stage.py --timeout 180 rr-plugin-http -- \
@@ -35,14 +35,29 @@ python suite/scripts/safe_stage.py --timeout 120 backend-restart -- \
     python ../suite/scripts/check_fastapi_restart.py
 )
 python suite/scripts/safe_stage.py --timeout 70 rr-auth-revocation -- python suite/scripts/check_revocation.py
-if [[ "$RR_E2E_CONTRACT_MODE" == "rr-plugin-v1" ]]; then
-  # Copy BEFORE typecheck/build, so the real Web TypeScript compiler checks
-  # the independent E2E spec against the exact checked-out application types.
-  cp suite/scripts/rr_plugin_browser.spec.ts observatory/e2e/rr_plugin_real_e2e.spec.ts
-  SPEC='e2e/rr_plugin_real_e2e.spec.ts'
-else
-  SPEC='e2e/rr-production-operator.spec.ts'
-fi
+# The test mode must match the selected *real* Web implementation.
+# Never downgrade OIDC to the retired password-login suite.
+case "$RR_E2E_CONTRACT_MODE" in
+  rr-plugin-v1)
+    if grep -q 'Password authentication retired' observatory/src/app/api/rr-operator/session/route.ts; then
+      echo 'RR_E2E_AUTH_MODE_MISMATCH=OIDC_REQUIRES_SESSION_TEST' >&2
+      exit 2
+    fi
+    cp suite/scripts/rr_plugin_browser.spec.ts observatory/e2e/rr_plugin_real_e2e.spec.ts
+    SPEC='e2e/rr_plugin_real_e2e.spec.ts'
+    ;;
+  rr-oidc-session-v1)
+    if ! grep -q 'Password authentication retired' observatory/src/app/api/rr-operator/session/route.ts; then
+      echo 'RR_E2E_AUTH_MODE_MISMATCH=EXPECTED_ZITADEL_BFF' >&2
+      exit 2
+    fi
+    cp suite/scripts/rr_oidc_session_browser.spec.ts observatory/e2e/rr_oidc_session_real_e2e.spec.ts
+    SPEC='e2e/rr_oidc_session_real_e2e.spec.ts'
+    ;;
+  *)
+    SPEC='e2e/rr-production-operator.spec.ts'
+    ;;
+esac
 (
   cd observatory
   python ../suite/scripts/safe_stage.py --timeout 700 observatory-install -- pnpm install --frozen-lockfile
