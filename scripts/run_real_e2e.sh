@@ -5,6 +5,11 @@ set -euo pipefail
 test -n "$E2E_KEY_A"
 test -n "$RR_E2E_OPERATOR_PASSWORD"
 test -n "$RR_E2E_API_REQUEST_PATH"
+RR_E2E_CONTRACT_MODE="${RR_E2E_CONTRACT_MODE:-legacy}"
+case "$RR_E2E_CONTRACT_MODE" in
+  legacy|rr-plugin-v1) ;;
+  *) echo 'RR_E2E_CONTRACT_MODE=INVALID' >&2; exit 2 ;;
+esac
 (cd backend && exec python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 \
   > "$RUNNER_TEMP/qdip-fastapi.log" 2>&1) &
 echo $! > "$RUNNER_TEMP/qdip-fastapi.pid"
@@ -15,6 +20,13 @@ curl --fail --silent --retry 35 --retry-delay 1 --retry-connrefused \
   python ../suite/scripts/safe_stage.py --timeout 180 backend-http -- \
     python ../suite/scripts/http_rr_e2e.py
 )
+if [[ "$RR_E2E_CONTRACT_MODE" == "rr-plugin-v1" ]]; then
+  (
+    cd backend
+    python ../suite/scripts/safe_stage.py --timeout 180 rr-plugin-http -- \
+      python ../suite/scripts/http_rr_plugin_e2e.py
+  )
+fi
 python suite/scripts/safe_stage.py --timeout 120 backend-restart -- \
   bash suite/scripts/restart_fastapi.sh
 (
@@ -37,11 +49,19 @@ python suite/scripts/safe_stage.py --timeout 180 sdk-e2e -- python suite/scripts
 python suite/scripts/safe_stage.py --timeout 80 sdk-negative -- python suite/scripts/check_remote_worker_failure.py
 echo '127.0.0.1 observatory.localhost' | sudo tee -a /etc/hosts >/dev/null
 test -s "$RR_E2E_API_REQUEST_PATH"
+if [[ "$RR_E2E_CONTRACT_MODE" == "rr-plugin-v1" ]]; then
+  # Playwright resolves @playwright/test from qdip-web/node_modules; the source
+  # spec lives solely in qdip-e2e, not in the private application repository.
+  cp suite/scripts/rr_plugin_browser.spec.ts observatory/e2e/rr_plugin_real_e2e.spec.ts
+  SPEC='e2e/rr_plugin_real_e2e.spec.ts'
+else
+  SPEC='e2e/rr-production-operator.spec.ts'
+fi
 (
   cd observatory
   python ../suite/scripts/safe_stage.py --timeout 350 \
     --output "$RUNNER_TEMP/qdip-browser-report.json" browser-e2e -- \
-    pnpm exec playwright test e2e/rr-production-operator.spec.ts \
+    pnpm exec playwright test "$SPEC" \
       --project=chromium --workers=1 --retries=0 --reporter=json --forbid-only
 )
 python suite/scripts/safe_stage.py --timeout 40 test-report -- python suite/scripts/check_browser_report.py
