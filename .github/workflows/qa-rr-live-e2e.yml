@@ -1,5 +1,5 @@
 name: RR Core-Web native integration E2E
-run-name: RR E2E pinned Core 30c764c Web 8aa0b78
+run-name: RR E2E pinned Core 30c764c Web ae84de9
 
 on:
   push:
@@ -70,7 +70,7 @@ jobs:
         with:
           repository: qdip-ai/qdip-web
           token: ${{ secrets.QDIP_READ_TOKEN }}
-          ref: 8aa0b78e602dbeaf9c3991ca82e1e3600e7b126b
+          ref: ae84de99b2c20c8160712e4a0daebd1bbf01b51a
           path: observatory
           persist-credentials: false
 
