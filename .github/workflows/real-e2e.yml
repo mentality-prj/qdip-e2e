@@ -23,6 +23,7 @@ on:
         options:
           - legacy
           - rr-plugin-v1
+          - rr-oidc-session-v1
         default: legacy
 
 permissions:
