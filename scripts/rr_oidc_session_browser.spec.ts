@@ -132,6 +132,7 @@ test('public RR is a read-only civilian input example, never a second solver', a
 test('anonymous browser cannot preflight, read Kernel evidence or export history', async ({ page }) => {
   const noPassword = await page.request.post(`${ORIGIN}/api/rr-operator/session`, { data: {password: 'obsolete'} })
   const preflight = await page.request.post(`${ROUTE}/preflight`, { data: {} })
+  const execution = await page.request.post(`${ROUTE}/executions`, { data: {} })
   const presentation = await page.request.get(`${ROUTE}/executions/not-allowed/presentation`)
   const history = await page.request.get(`${ROUTE}/decisions/not-allowed/history/export-complete`)
   mark('legacy-login-http', noPassword.status())
@@ -141,6 +142,7 @@ test('anonymous browser cannot preflight, read Kernel evidence or export history
   await markOperatorSession(page)
   expect(noPassword.status()).toBe(410)
   expect(preflight.status()).toBe(401)
+  expect(execution.status()).toBe(401)
   expect(presentation.status()).toBe(401)
   expect(history.status()).toBe(401)
 })
@@ -158,6 +160,10 @@ test('isolated signed Studio-only role cannot access RR operator', async ({ page
   expect(((await operatorSession.json()) as { authenticated: boolean }).authenticated).toBe(false)
   const denied = await page.request.post(`${ROUTE}/preflight`, { data: {} })
   expect(denied.status()).toBe(401)
+  const write = await page.request.post(`${ROUTE}/executions`, { data: {} })
+  expect(write.status()).toBe(401)
+  const evidence = await page.request.get(`${ROUTE}/executions/not-allowed/presentation`)
+  expect(evidence.status()).toBe(401)
 })
 
 
@@ -184,6 +190,8 @@ test('signed RR role with wrong project, organization, issuer or expiry is denie
     expect(await rr.json()).toMatchObject({ configured: true, authenticated: false })
     const denied = await page.request.post(`${ROUTE}/preflight`, { data: {} })
     expect(denied.status()).toBe(401)
+    const executeDenied = await page.request.post(`${ROUTE}/executions`, { data: {} })
+    expect(executeDenied.status()).toBe(401)
   }
 })
 
