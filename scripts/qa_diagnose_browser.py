@@ -57,6 +57,11 @@ def main() -> None:
                 for result in item.get("results", []):
                     for error in result.get("errors", []):
                         message = str(error.get("message", ""))
+                        first_line = message.splitlines()[0] if message else "EMPTY"
+                        first_line = re.sub(
+                            r"[^A-Za-z0-9 ():._/-]", "_", first_line
+                        )[:140]
+                        print("RR_BROWSER_FAILURE_FIRST_LINE=" + first_line)
                         expected = re.search(r"Expected:\s*(\d{3})", message)
                         received = re.search(r"Received:\s*(\d{3})", message)
                         if expected or received:
