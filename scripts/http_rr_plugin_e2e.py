@@ -22,13 +22,17 @@ BASE = "http://127.0.0.1:8000/api/v1/readiness-recovery"
 VERSION = "readiness-recovery.presentation.v1"
 
 
-def signed_actor(*, operation: str, expires: int, alter_signature: bool = False) -> tuple[str, str]:
+def signed_actor(
+    *, operation: str, expires: int, api_key: str,
+    alter_signature: bool = False,
+) -> tuple[str, str]:
     """Synthetic signed BFF hint, NOT a substitute for genuine Zitadel login."""
     issuer, subject = "https://e2e.invalid", "test-subject"
     actor = "zitadel:" + hashlib.sha256((issuer + chr(0) + subject).encode()).hexdigest()
-    unsigned = f"v1.{expires}.{actor}.{operation}"
+    unsigned = f"v2.{expires}.{actor}.{operation}"
     signature = hmac.new(
-        os.environ["RR_ACTOR_ASSERTION_SECRET"].encode(), unsigned.encode(), hashlib.sha256
+        os.environ["RR_ACTOR_ASSERTION_SECRET"].encode(),
+        unsigned.encode() + b"\0" + api_key.encode(), hashlib.sha256
     ).hexdigest()
     if alter_signature:
         signature = ("0" if signature[0] != "0" else "1") + signature[1:]
@@ -145,23 +149,33 @@ def main() -> None:
         actor_input["payload"]["decision_id"] = f"civilian-actor-{suffix}"
         actor_input["source"]["snapshot_id"] = f"actor-snapshot-{suffix}"
         expires = int(time.time()) + 30
-        ok_assertion, expected_actor = signed_actor(operation="execute", expires=expires)
-        tampered, _ = signed_actor(operation="execute", expires=expires, alter_signature=True)
+        ok_assertion, expected_actor = signed_actor(operation="execute", expires=expires, api_key=key_a)
+        tampered, _ = signed_actor(operation="execute", expires=expires, api_key=key_a, alter_signature=True)
         invalid_sig = call(
             client, "POST", "/executions", key_a, payload=actor_input, actor_assertion=tampered
         )
         assert invalid_sig.status_code == 403, "Tampered OIDC actor assertion must fail"
-        expired, _ = signed_actor(operation="execute", expires=int(time.time()) - 2)
+        expired, _ = signed_actor(operation="execute", expires=int(time.time()) - 2, api_key=key_a)
         invalid_expiry = call(
             client, "POST", "/executions", key_a, payload=actor_input, actor_assertion=expired
         )
         assert invalid_expiry.status_code == 403, "Expired actor assertion must fail"
-        wrong_operation, _ = signed_actor(operation="replan", expires=int(time.time()) + 30)
+        wrong_operation, _ = signed_actor(operation="replan", expires=int(time.time()) + 30, api_key=key_a)
         invalid_operation = call(
             client, "POST", "/executions", key_a, payload=actor_input,
             actor_assertion=wrong_operation,
         )
         assert invalid_operation.status_code == 403, "Actor assertion operation must match"
+        # A valid audit claim for org A cannot be replayed with org B's API key.
+        # The signed actor is bound to the exact authenticated org credential.
+        other_org_input = copy.deepcopy(actor_input)
+        other_org_input["execution_id"] = f"rr-cross-org-{suffix}"
+        other_org_input["payload"]["decision_id"] = f"civilian-cross-org-{suffix}"
+        cross_org = call(
+            client, "POST", "/executions", key_b, payload=other_org_input,
+            actor_assertion=ok_assertion,
+        )
+        assert cross_org.status_code == 403, "Actor assertion cannot cross organization keys"
         signed_created = expected(
             call(client, "POST", "/executions", key_a, payload=actor_input, actor_assertion=ok_assertion),
             201,
@@ -288,6 +302,7 @@ def main() -> None:
                 "replan_history_replay_verified_export": "PASS",
                 "verified_export_page_head_manifest_negative": "PASS",
                 "signed_actor_tamper_expiry_operation_and_audit": "PASS",
+                "signed_actor_cross_org_api_key_replay": "PASS",
                 "stochastic_roi_or_field_verification": "NOT_CLAIMED",
                 "oidc": "NOT_TESTED",
             },
