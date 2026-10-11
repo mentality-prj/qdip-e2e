@@ -59,7 +59,7 @@ jobs:
         with:
           repository: qdip-ai/qdip-core
           token: ${{ secrets.QDIP_READ_TOKEN }}
-          ref: 30c764c2074e67d546761cf9af0406fd29020ecc
+          ref: 08b816199c7e238c0ed13cc00986ec5fc4eb098f
           path: backend
           persist-credentials: false
 
@@ -98,6 +98,10 @@ jobs:
       - name: Run real RR HTTP, restart, SDK Worker and Chromium E2E
         shell: bash
         run: bash suite/scripts/run_real_e2e.sh
+
+      - name: Sanitized Chromium error classification on failure
+        if: failure()
+        run: python suite/scripts/qa_diagnose_browser.py
 
       - name: Scope-limited PASS
         run: |
