@@ -1,6 +1,7 @@
 """Pure contract tests: no GitHub credentials or real source repositories."""
 from __future__ import annotations
 
+import base64
 import unittest
 from unittest.mock import patch
 
@@ -45,19 +46,49 @@ class BrowserGateTests(unittest.TestCase):
 
 
 class ContractDiscoveryTests(unittest.TestCase):
-    def test_backend_contract_detected_explicitly(self) -> None:
-        with patch.object(watch_core, "api", return_value={"type": "file"}) as mock:
-            self.assertEqual(watch_core.rr_contract_mode("a" * 40, "opaque"), "rr-plugin-v1")
-            self.assertIn("presentation.py", mock.call_args.args[0])
+    CORE = "a" * 40
+    WEB = "b" * 40
+
+    @staticmethod
+    def web_source(code: str) -> dict:
+        return {"type": "file", "content": base64.b64encode(code.encode()).decode()}
+
+    def test_password_reference_operator_is_detected_by_real_web_source(self) -> None:
+        results = [
+            {"type": "file"},
+            self.web_source("createOperatorSession() and verifyOperatorPassword()"),
+        ]
+        with patch.object(watch_core, "api", side_effect=results) as mock:
+            self.assertEqual(
+                watch_core.rr_contract_mode(self.CORE, self.WEB, "opaque"), "rr-plugin-v1"
+            )
+            self.assertIn("presentation.py", mock.call_args_list[0].args[0])
+            self.assertIn(self.WEB, mock.call_args_list[1].args[0])
+
+    def test_signed_oidc_session_contract_has_dedicated_required_mode(self) -> None:
+        results = [
+            {"type": "file"},
+            self.web_source("Password authentication retired; use Zitadel OIDC"),
+        ]
+        with patch.object(watch_core, "api", side_effect=results):
+            self.assertEqual(
+                watch_core.rr_contract_mode(self.CORE, self.WEB, "opaque"), "rr-oidc-session-v1"
+            )
 
     def test_old_backend_selects_legacy_only_on_actual_404(self) -> None:
         with patch.object(watch_core, "api", side_effect=FileNotFoundError):
-            self.assertEqual(watch_core.rr_contract_mode("a" * 40, "opaque"), "legacy")
+            self.assertEqual(watch_core.rr_contract_mode(self.CORE, self.WEB, "opaque"), "legacy")
+
+    def test_unknown_web_contract_fails_closed(self) -> None:
+        results = [{"type": "file"}, self.web_source("unknown login implementation")]
+        with patch.object(watch_core, "api", side_effect=results):
+            with self.assertRaises(RuntimeError):
+                watch_core.rr_contract_mode(self.CORE, self.WEB, "opaque")
 
     def test_network_or_auth_error_does_not_silently_downgrade(self) -> None:
         with patch.object(watch_core, "api", side_effect=RuntimeError("GitHub authentication denied")):
             with self.assertRaises(RuntimeError):
-                watch_core.rr_contract_mode("a" * 40, "opaque")
+                watch_core.rr_contract_mode(self.CORE, self.WEB, "opaque")
 
 
 if __name__ == "__main__":
