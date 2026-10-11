@@ -25,6 +25,7 @@ BRANCHES = ("feat/rr-prod-01-normalized-source-import", "dev")
 OBS_BRANCH = "dev"
 LEDGER = ".state/core-watch.json"
 RR_CONTRACT = "app/plugins/readiness_recovery/reference_proof.py"
+RR_PLUGIN_PRESENTATION = "app/plugins/readiness_recovery/presentation.py"
 SOURCE_PREFIXES = ("app/", "tests/", "packages/", "examples/", "scripts/")
 SOURCE_NAMES = {"pyproject.toml", "uv.lock", "poetry.lock", "requirements.txt"}
 # Every E2E runner, fixture and check influences the test identity.
@@ -63,6 +64,19 @@ def supported(sha: str, token: str) -> bool:
         return item.get("type") == "file"
     except FileNotFoundError:
         return False
+
+
+def rr_contract_mode(sha: str, token: str) -> str:
+    """Once Core exposes plugin read models, force the new Core/Web real E2E.
+
+    The mode is derived from backend versioned source, not a potentially
+    incompatible frontend branch, so an unupgraded Observatory fails closed.
+    """
+    try:
+        item = api(f"/repos/{CORE}/contents/{RR_PLUGIN_PRESENTATION}?ref={sha}", token)
+        return "rr-plugin-v1" if item.get("type") == "file" else "legacy"
+    except FileNotFoundError:
+        return "legacy"
 
 
 def relevant_changes(previous: str | None, current: str, token: str) -> bool:
@@ -119,11 +133,12 @@ def write_ledger(data: dict, existing_sha: str | None, token: str) -> None:
     api(f"/repos/{TARGET}/contents/{quote(LEDGER, safe='/')}", token, body=payload, method="PUT")
 
 
-def dispatch(branch: str, sha: str, token: str) -> None:
+def dispatch(branch: str, sha: str, token: str, mode: str) -> None:
     api(f"/repos/{TARGET}/dispatches", token,
         body={"event_type": "qdip-core-updated",
               "client_payload": {"repository": CORE, "backend_sha": sha, "backend_branch": branch,
-                                 "observatory_ref": OBS_BRANCH}})
+                                 "observatory_ref": OBS_BRANCH,
+                                 "rr_contract_mode": mode}})
 
 
 def main() -> int:
@@ -143,7 +158,8 @@ def main() -> int:
         prior = data["branches"].get(branch, {})
         previous_sha = prior.get("seen_sha")
         attempt = prior.get("last_attempt", {})
-        key = hashlib.sha256(f"{sha}:{obs_sha}:{observed_suite}".encode()).hexdigest()
+        mode = rr_contract_mode(sha, source)
+        key = hashlib.sha256(f"{sha}:{obs_sha}:{observed_suite}:{mode}".encode()).hexdigest()
         if not supported(sha, source):
             data["branches"][branch] = {**prior, "seen_sha": sha, "status": "UNSUPPORTED_RR"}
             updated = True
@@ -170,11 +186,12 @@ def main() -> int:
             updated = True
             print(f"QDIP_WATCH_UNRELATED={branch}")
             continue
-        dispatch(branch, sha, target)
+        dispatch(branch, sha, target, mode)
         count = int(attempt.get("count", 0)) + 1 if attempt.get("key") == key else 1
         data["branches"][branch] = {"seen_sha": sha, "status": "DISPATCHED",
                                    "last_attempt": {"key": key, "backend_sha": sha, "obs_sha": obs_sha,
-                                                    "suite_fingerprint": observed_suite, "status": "DISPATCHED",
+                                                    "suite_fingerprint": observed_suite, "rr_contract_mode": mode,
+                                                    "status": "DISPATCHED",
                                                     "count": count, "requested_at": now.isoformat()}}
         updated = True
         print(f"QDIP_WATCH_DISPATCHED={branch}")
