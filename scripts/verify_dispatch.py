@@ -9,7 +9,10 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 REPO = "qdip-ai/qdip-core"
-BRANCHES = {"dev", "feat/rr-prod-01-normalized-source-import"}
+BRANCH_TO_WEB = {
+    "dev": "dev",
+    "feat/rr-plugin-computation-ownership": "feat/qdip-zitadel-oidc",
+}
 
 def get(path: str, token: str) -> dict:
     request = Request(
@@ -29,7 +32,10 @@ def main() -> None:
     source_sha = os.environ["BACKEND_SHA"]
     branch = os.environ["BACKEND_BRANCH"]
     token = os.environ["QDIP_READ_TOKEN"]
-    if branch not in BRANCHES or not re.fullmatch(r"[0-9a-f]{40}", source_sha):
+    web_ref = os.environ.get("OBSERVATORY_REF", "")
+    if branch not in BRANCH_TO_WEB or web_ref != BRANCH_TO_WEB.get(branch):
+        raise RuntimeError("Rejected mismatched Core/Web qualification pair")
+    if branch not in BRANCH_TO_WEB or not re.fullmatch(r"[0-9a-f]{40}", source_sha):
         raise RuntimeError("Rejected source branch or commit format")
     ref = get(f"/repos/{REPO}/git/ref/heads/{quote(branch, safe='/')}", token)
     target_sha = ref.get("object", {}).get("sha")
