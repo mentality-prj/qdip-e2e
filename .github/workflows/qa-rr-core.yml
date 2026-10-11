@@ -86,5 +86,13 @@ jobs:
           fi
           echo "RR_MYPY_EXIT=$result"
           exit "$result"
+      - name: All RR plugin unit and contract tests (native Mongo is separate)
+        working-directory: core
+        run: |
+          set +e
+          python -m pytest -q tests/plugins/readiness_recovery --ignore=tests/plugins/readiness_recovery/test_mongo_integration.py > "$RUNNER_TEMP/rr-all.log" 2>&1
+          result=$?
+          echo "RR_FULL_PLUGIN_UNIT_TESTS_EXIT=$result"
+          exit "$result"
       - name: Qualification marker (no private source or logs)
         run: echo 'RR_CORE_FOCUSED=PASS; LIVE_MONGO_AND_ZITADEL_NOT_TESTED'
