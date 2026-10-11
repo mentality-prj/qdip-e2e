@@ -64,6 +64,22 @@ function actualInput(): CivilianRequest {
   return input
 }
 
+// Only small predefined statuses/booleans are recorded; never persist a cookie,
+// response body, subject, or production credential in public runner evidence.
+function mark(label: string, value: number | boolean) {
+  test.info().annotations.push({ type: 'rr-' + label, description: String(value) })
+}
+
+async function markOperatorSession(page: import('@playwright/test').Page) {
+  const response = await page.request.get(`${ORIGIN}/api/rr-operator/session`)
+  mark('session-http', response.status())
+  if (response.status() === 200) {
+    const value = (await response.json()) as { configured?: boolean; authenticated?: boolean }
+    mark('session-configured', value.configured === true)
+    mark('session-authenticated', value.authenticated === true)
+  }
+}
+
 test('public RR is a read-only civilian input example, never a second solver', async ({ page }) => {
   await page.goto(PAGE, { waitUntil: 'domcontentloaded' })
   const preview = page.getByTestId('rr-reference-preview')
@@ -81,12 +97,17 @@ test('public RR is a read-only civilian input example, never a second solver', a
 
 test('anonymous browser cannot preflight, read Kernel evidence or export history', async ({ page }) => {
   const noPassword = await page.request.post(`${ORIGIN}/api/rr-operator/session`, { data: {password: 'obsolete'} })
-  expect(noPassword.status()).toBe(410)
   const preflight = await page.request.post(`${ROUTE}/preflight`, { data: {} })
-  expect(preflight.status()).toBe(401)
   const presentation = await page.request.get(`${ROUTE}/executions/not-allowed/presentation`)
-  expect(presentation.status()).toBe(401)
   const history = await page.request.get(`${ROUTE}/decisions/not-allowed/history/export-complete`)
+  mark('legacy-login-http', noPassword.status())
+  mark('anonymous-preflight-http', preflight.status())
+  mark('anonymous-presentation-http', presentation.status())
+  mark('anonymous-history-http', history.status())
+  await markOperatorSession(page)
+  expect(noPassword.status()).toBe(410)
+  expect(preflight.status()).toBe(401)
+  expect(presentation.status()).toBe(401)
   expect(history.status()).toBe(401)
 })
 
@@ -101,6 +122,8 @@ test('tampered isolated OIDC session never authorizes the Web BFF', async ({ pag
     value: session.value.slice(0, -1) + (last === 'A' ? 'B' : 'A'),
   }])
   const denied = await page.request.get(`${ROUTE}/executions/denied/presentation`)
+  mark('tampered-presentation-http', denied.status())
+  await markOperatorSession(page)
   expect(denied.status()).toBe(401)
   const status = await page.request.get(`${ORIGIN}/api/rr-operator/session`)
   expect(status.status()).toBe(200)
@@ -112,6 +135,7 @@ test('live browser → Core preflight → CP-SAT → Mongo → decision-first �
   const original = actualInput()
   await installIsolatedOidcSession(page)
   await page.goto(PAGE, { waitUntil: 'domcontentloaded' })
+  await markOperatorSession(page)
   const panel = page.getByTestId('rr-production-operator')
   await expect(panel).toBeVisible()
   await expect(panel.getByRole('button', { name: 'Sign out' })).toBeVisible()
@@ -228,6 +252,7 @@ test('invalid input fails closed in real Core preflight; no fabricated decision 
   actualInput()
   await installIsolatedOidcSession(page)
   await page.goto(PAGE, { waitUntil: 'domcontentloaded' })
+  await markOperatorSession(page)
   const panel = page.getByTestId('rr-production-operator')
   await expect(panel.getByRole('button', { name: 'Sign out' })).toBeVisible()
   await panel.getByLabel('Kernel execution JSON').fill('{"execution_id":"invalid-input","source":{},"payload":{"jobs":[]}}')
