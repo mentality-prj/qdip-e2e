@@ -149,6 +149,17 @@ test('live browser → Core preflight → CP-SAT → Mongo → decision-first �
   )
   await panel.getByRole('button', { name: 'Create execution', exact: true }).click()
   const actualCreated = await createResponse
+  mark('execution-create-http', actualCreated.status())
+  const originHeader = actualCreated.request().headers()['origin']
+  mark('execution-create-origin-match', originHeader === ORIGIN)
+  if (actualCreated.status() !== 201) {
+    const body = (await actualCreated.json().catch(() => ({}))) as { error?: string; detail?: string }
+    mark('execution-create-forbidden-origin', body.error === 'Forbidden origin')
+    mark('execution-create-operator-unconfigured', body.error === 'RR operator mode is not configured')
+    mark('execution-create-operator-unauthorized', body.error === 'RR operator login required')
+    mark('execution-create-transport', body.error === 'TLS required')
+    mark('execution-create-backend-unavailable', body.error === 'RR backend unavailable')
+  }
   expect(actualCreated.status()).toBe(201)
   const persisted = (await actualCreated.json()) as {actor_id: string; audit_evidence: {actor_id: string}}
   expect(persisted.actor_id).toMatch(/^zitadel:[a-f0-9]{64}$/)
@@ -189,6 +200,7 @@ test('live browser → Core preflight → CP-SAT → Mongo → decision-first �
   )
   await panel.getByRole('button', { name: 'Replan from predecessor' }).click()
   const actualReplan = await replanResponse
+  mark('replan-http', actualReplan.status())
   expect(actualReplan.status()).toBe(201)
   const persistedRevision = (await actualReplan.json()) as {actor_id: string; audit_evidence: {actor_id: string}}
   expect(persistedRevision.actor_id).toBe(persisted.actor_id)
