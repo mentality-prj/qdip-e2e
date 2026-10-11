@@ -24,7 +24,7 @@ on:
           - legacy
           - rr-plugin-v1
           - rr-oidc-session-v1
-        default: legacy
+        default: rr-oidc-session-v1
 
 permissions:
   contents: read
@@ -47,7 +47,7 @@ jobs:
       RR_TEST_MONGODB_URL: mongodb://127.0.0.1:27019/?replicaSet=rrtest&directConnection=true
       DIP_API_BASE_URL: http://127.0.0.1:8000
       RR_REFERENCE_OPERATOR_ENABLED: 'true'
-      RR_E2E_CONTRACT_MODE: ${{ github.event.client_payload.rr_contract_mode || inputs.rr_contract_mode || 'legacy' }}
+      RR_E2E_CONTRACT_MODE: ${{ github.event.client_payload.rr_contract_mode || inputs.rr_contract_mode || 'rr-oidc-session-v1' }}
     steps:
       - name: Checkout public independent E2E suite
         uses: actions/checkout@v4
@@ -114,6 +114,12 @@ jobs:
       - name: Bootstrap real native MongoDB and persisted backend records
         shell: bash
         run: bash suite/scripts/bootstrap_native.sh
+
+      - name: Full Core canonical quality gate (Ruff, mypy, pytest, freeze evidence)
+        shell: bash
+        run: |
+          cd backend
+          python ../suite/scripts/safe_stage.py --timeout 1800 core-quality -- python -m app.quality
 
       - name: Verify Core signed-actor tests and Ruff for OIDC RR contract
         if: env.RR_E2E_CONTRACT_MODE == 'rr-oidc-session-v1'
