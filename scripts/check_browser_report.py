@@ -20,6 +20,12 @@ MATRIX: dict[str, tuple[str, ...]] = {
         "public RR demo does not expose a prior scenario",
         "reference operator: Kernel execution, reasoned replan",
     ),
+    "rr-oidc-session-v1": (
+        "public RR is a read-only civilian input example",
+        "anonymous browser cannot preflight",
+        "live browser → Core preflight",
+        "invalid input fails closed in real Core preflight",
+    ),
     "rr-plugin-v1": (
         "public RR is a read-only civilian input example",
         "anonymous browser cannot preflight",
