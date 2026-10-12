@@ -275,6 +275,34 @@ def main() -> None:
             client, "GET", f"/economic-v2/advice/{run['execution_id']}/integrity",
             key_a,
         ), 200)["kernel_manifest_verified"] is True
+        # Corrupted persisted source data must fail closed (HTTP 409), even
+        # when the archive response itself remains intact.
+        source_collection = db["rr_economic_operator_snapshots"]
+        snapshot_key = f"rr-e2e-org-a:{snap}"
+        original_source = source_collection.find_one({"_id": snapshot_key})
+        assert original_source is not None
+        try:
+            corrupted = copy.deepcopy(original_source["request"])
+            corrupted["assets"][0]["state_revision"] += 1
+            source_collection.update_one(
+                {"_id": snapshot_key}, {"$set": {"request": corrupted}}
+            )
+            assert send(
+                client, "GET", f"/economic-v2/advice/{run['execution_id']}",
+                key_a,
+            ).status_code == 409
+            assert send(
+                client, "POST", "/economic-v2/advice", key_a, run,
+            ).status_code == 409
+        finally:
+            source_collection.update_one(
+                {"_id": snapshot_key},
+                {"$set": {"request": original_source["request"]}},
+            )
+        assert check(send(
+            client, "GET", f"/economic-v2/advice/{run['execution_id']}/integrity",
+            key_a,
+        ), 200)["snapshot_binding_verified"] is True
         assert send(
             client, "GET",
             f"/economic-v2/advice/{run['execution_id']}/integrity",
