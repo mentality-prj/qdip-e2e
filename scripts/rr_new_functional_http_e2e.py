@@ -190,6 +190,11 @@ def main() -> None:
         assert solved["snapshot_digest"] == registered["input_digest"]
         assert len(solved["scheduled_jobs"]) == 1
         assert str(solved["modeled_net_incremental_cents"]) == "300"
+        assert str(solved["modeled_baseline_margin_cents"]) == "0"
+        assert str(solved["modeled_recovered_margin_cents"]) == "400"
+        assert str(solved["modeled_repair_cost_cents"]) == "100"
+        assert str(solved["modeled_procurement_cost_cents"]) == "0"
+        assert str(solved["modeled_donor_cost_cents"]) == "0"
         assert solved["manifest"]["execution_id"] == run["execution_id"]
         check(
             send(client, "GET", f"/economic-v2/advice/{run['execution_id']}", key_b),
