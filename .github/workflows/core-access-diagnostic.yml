@@ -1,0 +1,32 @@
+name: Diagnose private Core read access (no credentials logged)
+
+on:
+  push:
+    branches: ['fix/core-access-diagnostic']
+    paths:
+      - '.github/workflows/core-access-diagnostic.yml'
+      - 'scripts/diagnose_core_access.py'
+      - 'scripts/test_core_access_diagnostic.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  private-read:
+    if: github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Checkout public diagnostic code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate diagnostic classifications before accessing token
+        run: |
+          python -m compileall -q scripts/diagnose_core_access.py scripts/test_core_access_diagnostic.py
+          python -m unittest discover -s scripts -p 'test_core_access_diagnostic.py' -v
+      - name: Probe live Actions credential against private Core
+        env:
+          QDIP_READ_TOKEN: ${{ secrets.QDIP_READ_TOKEN }}
+        run: python scripts/diagnose_core_access.py
