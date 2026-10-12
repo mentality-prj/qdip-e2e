@@ -18,38 +18,66 @@ type CivilianRequest = {
 }
 
 
-/**
- * Inject a locally signed QDIP test session to exercise the REAL OIDC BFF's
- * session authorization and signed Core audit on this isolated runner.
- * It deliberately does NOT test Zitadel login, PKCE, JWKS or callbacks.
- * Never use this fixture with production origin or production secrets.
- */
-async function installIsolatedOidcSession(
-  page: import('@playwright/test').Page,
-  role: 'rr' | 'studio' = 'rr'
-) {
-  const secret = process.env.QDIP_WEB_SESSION_SIGNING_SECRET ?? ''
+type IsolatedRole = 'rr_operator' | 'studio'
+type IsolatedClaims = {
+  sub: string
+  issuer: string
+  clientId: string
+  projectId: string
+  organizationId: string
+  expiresAt: number
+  roles: IsolatedRole[]
+}
+
+/** Test-only signed session against real QDIP Web BFF; NOT a live Zitadel login. */
+function makeIsolatedClaims(role: 'rr' | 'studio'): { secret: string; claims: IsolatedClaims } {
+  const secret = process.env.QDIP_AUTH_COOKIE_SECRET ?? ''
   const issuer = process.env.ZITADEL_ISSUER ?? ''
   const clientId = process.env.ZITADEL_CLIENT_ID ?? ''
-  const rrSubject = process.env.QDIP_RR_ALLOWED_ZITADEL_USER_IDS ?? ''
-  const studioSubject = process.env.QDIP_STUDIO_ALLOWED_ZITADEL_USER_IDS ?? ''
-  const subject = role === 'studio' ? studioSubject : rrSubject
-  if (secret.length < 32 || issuer !== 'https://qdip-e2e.invalid' || clientId !== 'qdip-e2e-client' ||
-      rrSubject !== 'qdip-e2e-operator' || studioSubject !== 'qdip-e2e-studio-only' ||
-      process.env.GITHUB_ACTIONS !== 'true')
-    throw new Error('Isolated OIDC-session test configuration is missing or unsafe')
-  const expiresAt = Math.floor(Date.now() / 1000) + 900
-  const body = Buffer.from(JSON.stringify({sub: subject, issuer, clientId, expiresAt})).toString('base64url')
-  const mac = createHmac('sha256', secret).update('session-v1:' + body).digest('base64url')
+  const projectId = process.env.ZITADEL_QDIP_PROJECT_ID ?? ''
+  const organizationId = process.env.ZITADEL_QDIP_ORGANIZATION_ID ?? ''
+  const rrSubject = process.env.RR_E2E_OPERATOR_SUBJECT ?? ''
+  const studioSubject = process.env.RR_E2E_STUDIO_SUBJECT ?? ''
+  if (
+    process.env.GITHUB_ACTIONS !== 'true' ||
+    secret.length < 32 ||
+    issuer !== 'https://qdip-e2e.invalid' ||
+    clientId !== 'qdip-e2e-client' ||
+    projectId !== '123456789' ||
+    organizationId !== '987654321' ||
+    process.env.QDIP_RR_ZITADEL_ROLE_KEY !== 'rr_operator' ||
+    process.env.QDIP_STUDIO_ZITADEL_ROLE_KEY !== 'studio' ||
+    rrSubject !== 'qdip-e2e-operator' ||
+    studioSubject !== 'qdip-e2e-studio-only'
+  ) throw new Error('Isolated OIDC test configuration incompatible with current Web contract')
+  return {
+    secret,
+    claims: {
+      sub: role === 'rr' ? rrSubject : studioSubject,
+      issuer, clientId, projectId, organizationId,
+      expiresAt: Math.floor(Date.now() / 1000) + 900,
+      roles: [role === 'rr' ? 'rr_operator' : 'studio'],
+    },
+  }
+}
+
+async function installIsolatedOidcSession(
+  page: import('@playwright/test').Page,
+  role: 'rr' | 'studio' = 'rr',
+  overrides: Partial<IsolatedClaims> = {}
+) {
+  const { secret, claims } = makeIsolatedClaims(role)
+  const payload = Buffer.from(JSON.stringify({ ...claims, ...overrides })).toString('base64url')
+  const signature = createHmac('sha256', secret).update('session-v1:' + payload).digest('base64url')
   await page.context().addCookies([{
     name: 'qdip_oidc_session',
-    value: body + '.' + mac,
+    value: payload + '.' + signature,
     domain: 'observatory.localhost',
     path: '/',
     httpOnly: true,
     secure: false,
     sameSite: 'Lax',
-    expires: expiresAt,
+    expires: Math.floor(Date.now() / 1000) + 900,
   }])
 }
 
@@ -104,6 +132,7 @@ test('public RR is a read-only civilian input example, never a second solver', a
 test('anonymous browser cannot preflight, read Kernel evidence or export history', async ({ page }) => {
   const noPassword = await page.request.post(`${ORIGIN}/api/rr-operator/session`, { data: {password: 'obsolete'} })
   const preflight = await page.request.post(`${ROUTE}/preflight`, { data: {} })
+  const execution = await page.request.post(`${ROUTE}/executions`, { data: {} })
   const presentation = await page.request.get(`${ROUTE}/executions/not-allowed/presentation`)
   const history = await page.request.get(`${ROUTE}/decisions/not-allowed/history/export-complete`)
   mark('legacy-login-http', noPassword.status())
@@ -113,11 +142,12 @@ test('anonymous browser cannot preflight, read Kernel evidence or export history
   await markOperatorSession(page)
   expect(noPassword.status()).toBe(410)
   expect(preflight.status()).toBe(401)
+  expect(execution.status()).toBe(401)
   expect(presentation.status()).toBe(401)
   expect(history.status()).toBe(401)
 })
 
-test('Studio-only Zitadel subject cannot access RR operator', async ({ page }) => {
+test('isolated signed Studio-only role cannot access RR operator', async ({ page }) => {
   await installIsolatedOidcSession(page, 'studio')
   const globalSession = await page.request.get(`${ORIGIN}/api/auth/session`)
   expect(globalSession.status()).toBe(200)
@@ -130,6 +160,61 @@ test('Studio-only Zitadel subject cannot access RR operator', async ({ page }) =
   expect(((await operatorSession.json()) as { authenticated: boolean }).authenticated).toBe(false)
   const denied = await page.request.post(`${ROUTE}/preflight`, { data: {} })
   expect(denied.status()).toBe(401)
+  const write = await page.request.post(`${ROUTE}/executions`, { data: {} })
+  expect(write.status()).toBe(401)
+  const evidence = await page.request.get(`${ROUTE}/executions/not-allowed/presentation`)
+  expect(evidence.status()).toBe(401)
+})
+
+
+test('signed RR role with wrong project, organization, issuer or expiry is denied', async ({ page }) => {
+  const invalid: Partial<IsolatedClaims>[] = [
+    { projectId: '123456788' },
+    { organizationId: '987654320' },
+    { issuer: 'https://other-e2e.invalid' },
+    { expiresAt: Math.floor(Date.now() / 1000) - 10 },
+    { expiresAt: Math.floor(Date.now() / 1000) + 7200 },
+    { roles: [] },
+    { roles: ['studio'] },
+  ]
+  for (const changed of invalid) {
+    await installIsolatedOidcSession(page, 'rr', changed)
+    const global = await page.request.get(`${ORIGIN}/api/auth/session`)
+    expect(global.status()).toBe(200)
+    const identity = (await global.json()) as { configured: boolean; authenticated: boolean; operator: boolean }
+    expect(identity.configured).toBe(true)
+    expect(identity.operator).toBe(false)
+    expect(identity.authenticated).toBe(changed.roles?.[0] === 'studio')
+    const rr = await page.request.get(`${ORIGIN}/api/rr-operator/session`)
+    expect(rr.status()).toBe(200)
+    expect(await rr.json()).toMatchObject({ configured: true, authenticated: false })
+    const denied = await page.request.post(`${ROUTE}/preflight`, { data: {} })
+    expect(denied.status()).toBe(401)
+    const executeDenied = await page.request.post(`${ROUTE}/executions`, { data: {} })
+    expect(executeDenied.status()).toBe(401)
+  }
+})
+
+test('anonymous and Studio-only browser cannot operate RR', async ({ page }) => {
+  await page.goto(PAGE, { waitUntil: 'domcontentloaded' })
+  const panel = page.getByTestId('rr-production-operator')
+  await expect(panel).toBeVisible()
+  const anonymous = await page.request.get(`${ORIGIN}/api/auth/session`)
+  expect(anonymous.status()).toBe(200)
+  expect(await anonymous.json()).toMatchObject({ configured: true, authenticated: false, operator: false })
+  await expect(panel.getByRole('button', { name: 'Sign in with Zitadel' })).toBeVisible()
+  await expect(panel.getByLabel('Kernel execution JSON')).toHaveCount(0)
+  await expect(panel.getByRole('button', { name: 'Create execution' })).toHaveCount(0)
+  await expect(page.getByTestId('rr-decision-first')).toHaveCount(0)
+  await installIsolatedOidcSession(page, 'studio')
+  const denied = await page.request.get(`${ORIGIN}/api/rr-operator/session`)
+  expect(denied.status()).toBe(200)
+  expect(await denied.json()).toMatchObject({ configured: true, authenticated: false })
+  await page.reload()
+  await expect(panel.getByRole('button', { name: 'Sign in with Zitadel' })).toBeVisible()
+  await expect(panel.getByLabel('Kernel execution JSON')).toHaveCount(0)
+  await expect(panel.getByRole('button', { name: 'Create execution' })).toHaveCount(0)
+  await expect(page.getByTestId('rr-decision-first')).toHaveCount(0)
 })
 
 test('tampered isolated OIDC session never authorizes the Web BFF', async ({ page }) => {
@@ -151,12 +236,22 @@ test('tampered isolated OIDC session never authorizes the Web BFF', async ({ pag
   expect(((await status.json()) as {authenticated: boolean}).authenticated).toBe(false)
 })
 
-test('live browser → Core preflight → CP-SAT → Mongo → decision-first → replan → verified export', async ({ page }) => {
+test('isolated signed-session browser → real Core → CP-SAT → Mongo → replan → verified export', async ({ page }) => {
   test.setTimeout(240_000)
   const original = actualInput()
   await installIsolatedOidcSession(page)
   await page.goto(PAGE, { waitUntil: 'domcontentloaded' })
   await markOperatorSession(page)
+  const globalSession = await page.request.get(`${ORIGIN}/api/auth/session`)
+  expect(globalSession.status()).toBe(200)
+  expect(await globalSession.json()).toMatchObject({
+    configured: true, authenticated: true, operator: true, studio: false,
+  })
+  const operatorSession = await page.request.get(`${ORIGIN}/api/rr-operator/session`)
+  expect(operatorSession.status()).toBe(200)
+  expect(await operatorSession.json()).toMatchObject({
+    configured: true, authenticated: true, mode: 'zitadel-oidc',
+  })
   const panel = page.getByTestId('rr-production-operator')
   await expect(panel).toBeVisible()
   await expect(panel.getByRole('button', { name: 'Sign out' })).toBeVisible()

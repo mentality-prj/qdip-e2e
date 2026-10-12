@@ -52,20 +52,24 @@ class IsolatedOidcFixtureTests(unittest.TestCase):
     def source(name: str) -> str:
         return (Path(__file__).parent / name).read_text(encoding="utf-8")
 
-    def test_e2e_session_fixture_uses_current_web_229_names(self) -> None:
+    def test_e2e_session_fixture_uses_current_role_bound_web_contract(self) -> None:
         provision = self.source("provision_tenants.py")
         browser = self.source("rr_oidc_session_browser.spec.ts")
         current = {
-            "QDIP_WEB_SESSION_SIGNING_SECRET",
-            "QDIP_RR_ALLOWED_ZITADEL_USER_IDS",
-            "QDIP_STUDIO_ALLOWED_ZITADEL_USER_IDS",
+            "QDIP_AUTH_COOKIE_SECRET",
+            "ZITADEL_QDIP_PROJECT_ID",
+            "ZITADEL_QDIP_ORGANIZATION_ID",
+            "QDIP_RR_ZITADEL_ROLE_KEY",
+            "QDIP_STUDIO_ZITADEL_ROLE_KEY",
         }
         for key in current:
             with self.subTest(name=key):
                 self.assertIn(key, provision)
                 self.assertIn(key, browser)
         for retired in (
-            "QDIP_AUTH_COOKIE_SECRET",
+            "QDIP_WEB_SESSION_SIGNING_SECRET",
+            "QDIP_RR_ALLOWED_ZITADEL_USER_IDS",
+            "QDIP_STUDIO_ALLOWED_ZITADEL_USER_IDS",
             "QDIP_AUTH_ALLOWED_SUBJECTS",
             "QDIP_AUTH_OPERATOR_SUBJECTS",
         ):
@@ -78,32 +82,34 @@ class IsolatedOidcFixtureTests(unittest.TestCase):
         browser = self.source("rr_oidc_session_browser.spec.ts")
         self.assertIn('"qdip-e2e-operator"', provision)
         self.assertIn('"qdip-e2e-studio-only"', provision)
-        self.assertIn("Studio-only Zitadel subject cannot access RR operator", browser)
+        self.assertIn("isolated signed Studio-only role cannot access RR operator", browser)
         required = check_browser_report.MATRIX["rr-oidc-session-v1"]
-        self.assertEqual(len(required), 6)
-        self.assertIn("Studio-only Zitadel subject cannot access RR operator", required)
+        self.assertEqual(len(required), 8)
+        self.assertIn("isolated signed Studio-only role cannot access RR operator", required)
         test_report = report("rr-oidc-session-v1")
         self.assertTrue(check_browser_report.validate(test_report, "rr-oidc-session-v1"))
         test_report["suites"][0]["specs"] = [
             spec for spec in test_report["suites"][0]["specs"]
-            if not spec["title"].startswith("Studio-only Zitadel subject")
+            if not spec["title"].startswith("isolated signed Studio-only role")
         ]
         self.assertFalse(check_browser_report.validate(test_report, "rr-oidc-session-v1"))
 
 
 class ActiveQualificationRefTests(unittest.TestCase):
-    def test_rr_feature_tracks_current_web_feature_and_not_retired_branch(self) -> None:
-        current = "feat/rr-plugin-computation-ownership"
-        self.assertIn(current, watch_core.BRANCHES)
-        self.assertNotIn("feat/rr-prod-01-normalized-source-import", watch_core.BRANCHES)
-        self.assertEqual(watch_core.OBS_BRANCHES[current], "feat/qdip-zitadel-oidc")
-        self.assertEqual(watch_core.OBS_BRANCHES["dev"], "dev")
+    def test_watcher_only_qualifies_canonical_merged_dev_pair(self) -> None:
+        self.assertEqual(watch_core.BRANCHES, ("dev",))
+        self.assertEqual(watch_core.OBS_BRANCHES, {"dev": "dev"})
+        self.assertNotIn("feat/rr-plugin-computation-ownership", watch_core.BRANCHES)
 
     def test_dispatch_refuses_cross_product_branch_pair_before_any_network(self) -> None:
         environment = {
             "BACKEND_SHA": "a" * 40,
             "BACKEND_BRANCH": "feat/rr-plugin-computation-ownership",
             "OBSERVATORY_REF": "dev",
+            "OBSERVATORY_SHA": "b" * 40,
+            "E2E_SUITE_SHA": "c" * 40,
+            "QUALIFICATION_KEY": "d" * 64,
+            "RR_E2E_CONTRACT_MODE": "rr-oidc-session-v1",
             "QDIP_READ_TOKEN": "not-a-real-token",
         }
         with patch.dict("os.environ", environment), patch.object(verify_dispatch, "get") as remote:
@@ -114,10 +120,9 @@ class ActiveQualificationRefTests(unittest.TestCase):
 
 class DashboardPairWatcherTests(unittest.TestCase):
     def test_unmerged_core_plugin_is_not_tested_as_retired_password_dashboard(self) -> None:
-        # Core/dev has the old reference proof but no Core-owned presentation.
-        # The already-merged Web/dev is Zitadel-only. This is a pending
-        # deployment pairing, NOT a failing RR plugin acceptance test.
-        paths = ["feat/rr-plugin-computation-ownership", "dev"]
+        # A missing Core presentation in a hypothetical old checkout must
+        # fail closed even if Web/dev uses Zitadel. Canonical dev has merged
+        # the plugin in reality, and its actual E2E must be tested separately.
         ledger = {"version": 1, "branches": {}}
         with (
             patch.dict("os.environ", {
@@ -125,15 +130,13 @@ class DashboardPairWatcherTests(unittest.TestCase):
                 "GITHUB_REPOSITORY": watch_core.TARGET,
                 "QDIP_READ_TOKEN": "read-only-test",
                 "GITHUB_TOKEN": "public-test",
+                "GITHUB_SHA": "e" * 40,
             }),
             patch.object(watch_core, "fingerprint", return_value="test-suite"),
             patch.object(watch_core, "read_ledger", return_value=(ledger, None)),
             patch.object(watch_core, "head", side_effect=lambda repo, branch, token:
-                ("a" if repo == watch_core.CORE and branch == paths[0]
-                 else "b" if repo == watch_core.CORE else "c") * 40),
-            patch.object(watch_core, "rr_contract_mode", side_effect=[
-                "rr-oidc-session-v1", "legacy",
-            ]),
+                ("a" if repo == watch_core.CORE else "b") * 40),
+            patch.object(watch_core, "rr_contract_mode", return_value="legacy"),
             patch.object(watch_core, "supported", return_value=False),
             patch.object(watch_core, "dispatch") as dispatch,
             patch.object(watch_core, "write_ledger") as saved,

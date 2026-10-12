@@ -45,11 +45,18 @@ values["RR_OPERATOR_SESSION_SECRET"] = secrets.token_urlsafe(64)
 values["RR_ACTOR_ASSERTION_SECRET"] = secrets.token_urlsafe(64)
 # Isolated cryptographic BFF-session test. This issuer is deliberately NOT real
 # Zitadel; no external IdP or production identity may be used here.
-values["QDIP_WEB_SESSION_SIGNING_SECRET"] = secrets.token_urlsafe(64)
+values["QDIP_AUTH_COOKIE_SECRET"] = secrets.token_urlsafe(64)
 values["ZITADEL_ISSUER"] = "https://qdip-e2e.invalid"
 values["ZITADEL_CLIENT_ID"] = "qdip-e2e-client"
-values["QDIP_STUDIO_ALLOWED_ZITADEL_USER_IDS"] = "qdip-e2e-studio-only"
-values["QDIP_RR_ALLOWED_ZITADEL_USER_IDS"] = "qdip-e2e-operator"
+# Current qdip-web signed-session schema requires numeric project + org IDs
+# and project-scoped roles. These are invented identifiers on a disposable runner.
+values["ZITADEL_QDIP_PROJECT_ID"] = "123456789"
+values["ZITADEL_QDIP_ORGANIZATION_ID"] = "987654321"
+values["QDIP_STUDIO_ZITADEL_ROLE_KEY"] = "studio"
+values["QDIP_RR_ZITADEL_ROLE_KEY"] = "rr_operator"
+# These are mock subjects only: real Zitadel login/claim issuance is not tested.
+values["RR_E2E_OPERATOR_SUBJECT"] = "qdip-e2e-operator"
+values["RR_E2E_STUDIO_SUBJECT"] = "qdip-e2e-studio-only"
 # The staged Observatory operator is a separate app, but must use a valid
 # org-scoped key. Never pass the platform-level API_KEY to the browser proxy.
 values["DIP_API_KEY"] = values["E2E_KEY_A"]

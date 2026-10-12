@@ -10,7 +10,7 @@ on:
         description: "Backend branch or commit SHA"
         type: string
         required: true
-        default: feat/rr-prod-01-normalized-source-import
+        default: dev
       observatory_ref:
         description: "Observatory branch or commit SHA"
         type: string
@@ -52,8 +52,12 @@ jobs:
       - name: Checkout public independent E2E suite
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.client_payload.suite_sha || github.sha }}
           path: suite
           persist-credentials: false
+
+      - name: Validate public E2E runner invariants before private checkout
+        run: python -m unittest discover -s suite/tests -p 'test_runner_integrity.py' -v
 
       - name: Configure ephemeral reference path
         run: echo "RR_E2E_API_REQUEST_PATH=$RUNNER_TEMP/rr-reference-request.json" >> "$GITHUB_ENV"
@@ -72,6 +76,9 @@ jobs:
           BACKEND_SHA: ${{ github.event.client_payload.backend_sha }}
           BACKEND_BRANCH: ${{ github.event.client_payload.backend_branch }}
           OBSERVATORY_REF: ${{ github.event.client_payload.observatory_ref }}
+          OBSERVATORY_SHA: ${{ github.event.client_payload.observatory_sha }}
+          E2E_SUITE_SHA: ${{ github.event.client_payload.suite_sha }}
+          QUALIFICATION_KEY: ${{ github.event.client_payload.qualification_key }}
           QDIP_READ_TOKEN: ${{ secrets.QDIP_READ_TOKEN }}
         run: python suite/scripts/verify_dispatch.py
 
@@ -89,7 +96,7 @@ jobs:
         with:
           repository: qdip-ai/qdip-web
           token: ${{ secrets.QDIP_READ_TOKEN }}
-          ref: ${{ github.event.client_payload.observatory_ref || inputs.observatory_ref || 'dev' }}
+          ref: ${{ github.event.client_payload.observatory_sha || inputs.observatory_ref || 'dev' }}
           path: observatory
           persist-credentials: false
 
@@ -180,6 +187,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.client_payload.suite_sha || github.sha }}
           persist-credentials: false
       - name: Fetch sanitized statuses (optional if bootstrap failed)
         uses: actions/download-artifact@v4
@@ -192,6 +200,9 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           E2E_BRANCH: ${{ github.event.client_payload.backend_branch }}
           E2E_SHA: ${{ github.event.client_payload.backend_sha }}
+          E2E_WEB_SHA: ${{ github.event.client_payload.observatory_sha }}
+          E2E_SUITE_SHA: ${{ github.event.client_payload.suite_sha }}
+          E2E_QUALIFICATION_KEY: ${{ github.event.client_payload.qualification_key }}
           E2E_JOB_STATUS: ${{ needs.integration.result }}
           E2E_PHASES_PATH: ${{ runner.temp }}/statuses/qdip-stage-results.jsonl
         run: python scripts/report_run.py

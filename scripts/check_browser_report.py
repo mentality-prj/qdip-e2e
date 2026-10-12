@@ -23,9 +23,11 @@ MATRIX: dict[str, tuple[str, ...]] = {
     "rr-oidc-session-v1": (
         "public RR is a read-only civilian input example",
         "anonymous browser cannot preflight",
-        "Studio-only Zitadel subject cannot access RR operator",
+        "isolated signed Studio-only role cannot access RR operator",
+        "signed RR role with wrong project, organization, issuer or expiry is denied",
+        "anonymous and Studio-only browser cannot operate RR",
         "tampered isolated OIDC session never authorizes",
-        "live browser → Core preflight",
+        "isolated signed-session browser → real Core",
         "invalid input fails closed in real Core preflight",
     ),
     "rr-plugin-v1": (
@@ -62,6 +64,9 @@ def main() -> int:
         print("BROWSER_REQUIRED_TEST_MATRIX=FAIL")
         return 1
     print(f"BROWSER_REQUIRED_TEST_MATRIX=PASS ({mode}, {len(MATRIX[mode])} required, zero skipped)")
+    if mode == "rr-oidc-session-v1":
+        print("QDIP_AUTH_SIGNED_SESSION_INTEGRATION=PASS")
+        print("QDIP_AUTH_LIVE_ZITADEL_OIDC=NOT_TESTED")
     return 0
 
 
