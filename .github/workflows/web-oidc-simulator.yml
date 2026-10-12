@@ -2,7 +2,7 @@ name: Web OIDC browser code-flow integration (isolated provider)
 
 on:
   push:
-    branches: ['test/rr-web-oidc-code-flow']
+    branches: [main, 'test/rr-web-oidc-code-flow']
     paths:
       - 'scripts/mock_zitadel.mjs'
       - 'scripts/rr_oidc_exchange_browser.spec.ts'
@@ -35,16 +35,11 @@ jobs:
         with:
           path: suite
           persist-credentials: false
-      - name: Require Web-only read token (never Core)
-        env:
-          SOURCE_TOKEN: ${{ secrets.QDIP_READ_TOKEN }}
-        run: test -n "$SOURCE_TOKEN"
-      - name: Checkout only QDIP Web
+      - name: Checkout only public QDIP Web
         uses: actions/checkout@v4
         with:
           repository: qdip-ai/qdip-web
-          token: ${{ secrets.QDIP_READ_TOKEN }}
-          ref: fix/oidc-canonical-site-host-behind-proxy
+          ref: dev
           path: observatory
           persist-credentials: false
       - name: Record exact Web and E2E SHAs
