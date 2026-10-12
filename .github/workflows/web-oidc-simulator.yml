@@ -44,7 +44,7 @@ jobs:
         with:
           repository: qdip-ai/qdip-web
           token: ${{ secrets.QDIP_READ_TOKEN }}
-          ref: dev
+          ref: fix/oidc-canonical-site-host-behind-proxy
           path: observatory
           persist-credentials: false
       - name: Record exact Web and E2E SHAs
@@ -68,13 +68,15 @@ jobs:
             -keyout "$key" -out "$cert" \
             -days 1 -subj '/CN=identity.localhost' \
             -addext 'subjectAltName=DNS:identity.localhost' >/dev/null 2>&1
-          echo "MOCK_OIDC_CERT=$cert" >> "$GITHUB_ENV"
-          echo "MOCK_OIDC_KEY=$key" >> "$GITHUB_ENV"
-          echo "NODE_EXTRA_CA_CERTS=$cert" >> "$GITHUB_ENV"
           echo '127.0.0.1 identity.localhost qdip.localhost' | sudo tee -a /etc/hosts >/dev/null
           secret="$(openssl rand -base64 64 | tr -d '\n')"
           echo "::add-mask::$secret"
-          echo "QDIP_AUTH_COOKIE_SECRET=$secret" >> "$GITHUB_ENV"
+          {
+            echo "MOCK_OIDC_CERT=$cert"
+            echo "MOCK_OIDC_KEY=$key"
+            echo "NODE_EXTRA_CA_CERTS=$cert"
+            echo "QDIP_AUTH_COOKIE_SECRET=$secret"
+          } >> "$GITHUB_ENV"
       - name: Start isolated HTTPS OIDC service
         shell: bash
         run: |
