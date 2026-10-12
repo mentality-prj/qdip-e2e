@@ -665,12 +665,14 @@ test('RR economic advice computes and archives with true Core/Mongo', async ({ p
   expect(verified.status()).toBe(200)
   const integrity = (await verified.json()) as {
     archive_digest_verified: boolean; snapshot_binding_verified: boolean;
-    kernel_manifest_verified: boolean; actionable: boolean;
+    kernel_manifest_verified: boolean; source_and_advice_mac_verified: boolean;
+    actionable: boolean;
   }
   expect(integrity).toMatchObject({
     archive_digest_verified: true,
     snapshot_binding_verified: true,
     kernel_manifest_verified: true,
+    source_and_advice_mac_verified: true,
     actionable: false,
   })
   await expect(panel.getByTestId('rr-economic-v2-verified')).toBeVisible()
@@ -687,6 +689,8 @@ test('RR economic advice computes and archives with true Core/Mongo', async ({ p
     external_source_attested: false,
     procurement_authorized: false,
     stock_reserved: false,
+    verification_scope: 'QDIP_SERVER_INTERNAL_ONLY',
+    portable_cryptographic_signature: false,
     advice: {
       execution_id: advice.execution_id,
       snapshot_digest: advice.snapshot_digest,

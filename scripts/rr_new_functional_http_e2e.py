@@ -187,6 +187,7 @@ def main() -> None:
         ), 201)
         assert registered["snapshot_id"] == snap
         assert registered["actionable"] is False
+        assert registered["evidence_sealing"] == "SERVER_HMAC_SHA256_V1"
         check(send(client, "POST", "/economic-v2/snapshots", key_a, economic), 201)
         changed = copy.deepcopy(economic)
         changed["capabilities"][0]["contribution_cents_by_slot"] = [0, 250, 250]
@@ -203,6 +204,8 @@ def main() -> None:
         assert solved["atomic_plan_committed"] is False
         assert solved["supply_source_verified"] is False
         assert solved["snapshot_digest"] == registered["input_digest"]
+        assert "integrity_mac" not in json.dumps(solved)
+        assert os.environ["RR_ECONOMIC_EVIDENCE_HMAC_KEY"] not in json.dumps(solved)
         assert len(solved["scheduled_jobs"]) == 1
         assert str(solved["modeled_net_incremental_cents"]) == "300"
         assert str(solved["modeled_baseline_margin_cents"]) == "0"
@@ -231,6 +234,7 @@ def main() -> None:
         assert integrity["archive_digest_verified"] is True
         assert integrity["snapshot_binding_verified"] is True
         assert integrity["kernel_manifest_verified"] is True
+        assert integrity["source_and_advice_mac_verified"] is True
         assert integrity["actionable"] is False
         assert integrity["snapshot_digest"] == registered["input_digest"]
         # A Mongo writer cannot forge modeled money: changing both the
