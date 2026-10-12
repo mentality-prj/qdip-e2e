@@ -263,6 +263,10 @@ def main() -> None:
             assert send(
                 client, "POST", "/economic-v2/advice", key_a, run
             ).status_code == 409
+            # Pagination itself must never disclose a forged modeled value.
+            assert send(
+                client, "GET", "/economic-v2/advice?limit=25", key_a
+            ).status_code == 409
         finally:
             archive_collection.update_one(
                 {"_id": archive_key}, {"$set": {
