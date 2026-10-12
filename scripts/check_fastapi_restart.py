@@ -21,6 +21,47 @@ def main() -> None:
         assert integrity.status_code == 200 and integrity.json()["complete_chain"] is True
         forbidden = client.get(f"{base}/executions/{state['original_id']}", headers={"x-api-key":os.environ["E2E_KEY_B"]})
         assert forbidden.status_code == 404
+        if os.environ.get("RR_E2E_ONLY") == "1":
+            functional_path = (
+                Path(os.environ["RUNNER_TEMP"]) / "qdip-rr-functional-state.json"
+            )
+            # No skipped coverage if the functional suite did not produce
+            # exactly the anticipated source checkpoint.
+            assert functional_path.is_file()
+            bound = json.loads(functional_path.read_text(encoding="utf-8"))
+            functional_history = client.get(
+                f"{base}/decisions/{bound['decision_id']}/history",
+                headers=headers,
+            )
+            assert functional_history.status_code == 200
+            assert {
+                row["result"]["workflow"]["execution_id"]
+                for row in functional_history.json()["executions"]
+            } == {
+                bound["import_execution_id"], bound["replan_execution_id"]
+            }
+            econ_id = bound["economic_execution_id"]
+            advice = client.get(
+                f"{base}/economic-v2/advice/{econ_id}",
+                headers=headers,
+            )
+            assert advice.status_code == 200
+            assert advice.json()["snapshot_digest"] == bound["economic_digest"]
+            assert advice.json()["snapshot_id"] == bound["economic_snapshot_id"]
+            proof = client.get(
+                f"{base}/economic-v2/advice/{econ_id}/integrity",
+                headers=headers,
+            )
+            assert proof.status_code == 200
+            verified = proof.json()
+            assert verified["archive_digest_verified"] is True
+            assert verified["snapshot_binding_verified"] is True
+            assert verified["kernel_manifest_verified"] is True
+            denied = client.get(
+                f"{base}/economic-v2/advice/{econ_id}",
+                headers={"x-api-key": os.environ["E2E_KEY_B"]},
+            )
+            assert denied.status_code == 404
     print("RR_HTTP_DURABLE_RESTART=PASS")
 
 if __name__ == "__main__":

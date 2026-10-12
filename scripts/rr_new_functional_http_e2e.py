@@ -279,6 +279,22 @@ def main() -> None:
             client, "POST", "/economic-v2/advice", key_b, run
         ).status_code == 404
 
+        # The independent FastAPI restart stage reopens these records from
+        # Mongo with a new process and independently revalidates provenance.
+        state = {
+            "import_execution_id": fixture["execution_id"],
+            "replan_execution_id": revised["execution_id"],
+            "decision_id": fixture["payload"]["decision_id"],
+            "economic_execution_id": run["execution_id"],
+            "economic_snapshot_id": snap,
+            "economic_digest": registered["input_digest"],
+        }
+        state_path = (
+            Path(os.environ["RUNNER_TEMP"]) / "qdip-rr-functional-state.json"
+        )
+        state_path.write_text(json.dumps(state), encoding="utf-8")
+        state_path.chmod(0o600)
+
     print("RR_COMPLETE_HTTP_E2E=PASS")
     print("RR_REAL_ZITADEL_EXTERNAL=NOT_TESTED")
     print("RR_ECONOMIC_EXTERNAL_ACTIONS=NOT_IMPLEMENTED")
