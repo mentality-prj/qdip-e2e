@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -114,14 +115,32 @@ def relevant_changes(previous: str | None, current: str, token: str) -> bool:
 
 
 def fingerprint() -> str:
+    """Hash tracked suite files only, independent of generated Python caches.
+
+    Watcher and runner can compile/import Python at different times. Untracked
+    __pycache__, .pytest_cache and local artifacts must NOT alter the
+    cryptographic identity of the same pinned suite SHA.
+    """
     digest = hashlib.sha256()
     root = Path(__file__).resolve().parents[1]
-    paths = [root / ".github/workflows/real-e2e.yml"]
-    paths += sorted(path for path in (root / "scripts").rglob("*") if path.is_file())
-    paths += sorted(path for path in (root / "fixtures").rglob("*") if path.is_file())
-    for path in paths:
-        relative = path.relative_to(root).as_posix()
-        digest.update(relative.encode())
+    names = subprocess.check_output(
+        ["git", "ls-files", "-z", "--",
+         ".github/workflows/real-e2e.yml", "scripts", "fixtures"],
+        cwd=root,
+        timeout=10,
+    )
+    paths = sorted(
+        Path(os.fsdecode(name))
+        for name in names.split(b"\0")
+        if name
+    )
+    if not paths or Path(".github/workflows/real-e2e.yml") not in paths:
+        raise RuntimeError("Missing tracked E2E workflow for suite fingerprint")
+    for relative in paths:
+        path = root / relative
+        if not path.is_file():
+            raise RuntimeError("Missing tracked E2E file during suite fingerprint")
+        digest.update(relative.as_posix().encode())
         digest.update(bytes([0]))
         digest.update(path.read_bytes())
         digest.update(bytes([0]))

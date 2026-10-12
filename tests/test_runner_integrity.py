@@ -6,7 +6,9 @@ import hashlib
 import io
 import json
 import os
+import subprocess
 import sys
+import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -19,6 +21,37 @@ import report_run
 
 
 class RunnerIntegrityTests(unittest.TestCase):
+    def test_fingerprint_ignores_generated_cache_not_tracked_mutations(self) -> None:
+        with tempfile.TemporaryDirectory() as location:
+            root = Path(location)
+            (root / "scripts").mkdir()
+            (root / "fixtures").mkdir()
+            (root / ".github/workflows").mkdir(parents=True)
+            (root / ".github/workflows/real-e2e.yml").write_text("name: E2E\n")
+            (root / "scripts/watch_core.py").write_text("# tracked\n")
+            (root / "fixtures/rr.json").write_text("{}\n")
+            subprocess.run(
+                ["git", "init", "-q"], cwd=root, check=True,
+                stdout=subprocess.DEVNULL,
+            )
+            subprocess.run(
+                ["git", "add", "-A"], cwd=root, check=True,
+                stdout=subprocess.DEVNULL,
+            )
+            with patch.object(
+                watch_core, "__file__", str(root / "scripts/watch_core.py")
+            ):
+                pinned = watch_core.fingerprint()
+                (root / "scripts/__pycache__").mkdir()
+                (root / "scripts/__pycache__/watch_core.pyc").write_bytes(b"generated")
+                (root / "fixtures/untracked.txt").write_text("ignored")
+                self.assertEqual(watch_core.fingerprint(), pinned)
+                (root / "scripts/watch_core.py").write_text("# changed\n")
+                self.assertNotEqual(watch_core.fingerprint(), pinned)
+                (root / "scripts/watch_core.py").unlink()
+                with self.assertRaisesRegex(RuntimeError, "Missing tracked"):
+                    watch_core.fingerprint()
+
     def test_dispatch_pins_entire_qualification_pair(self) -> None:
         core, web, suite = "a" * 40, "b" * 40, "c" * 40
         key = "d" * 64
