@@ -92,6 +92,11 @@ jobs:
           pnpm lint
           pnpm prettier
           pnpm typecheck
+          # Unit assertions expect canonical production-domain routing.
+          NEXT_PUBLIC_SITE_URL=https://qdip.ai \
+          NEXT_PUBLIC_STUDIO_URL=https://studio.qdip.ai \
+          NEXT_PUBLIC_OBSERVATORY_URL=https://observatory.qdip.ai \
+            pnpm test
           pnpm build
           pnpm exec playwright install --with-deps chromium
       - name: Run actual Web login + PKCE + RS256/JWKS + Userinfo browser tests
