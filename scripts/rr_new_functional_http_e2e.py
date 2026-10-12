@@ -284,6 +284,51 @@ def main() -> None:
             client, "POST", "/economic-v2/advice", key_b, run
         ).status_code == 404
 
+        # Competing economic snapshots must NEVER both own one execution ID.
+        # Real concurrent HTTP and Mongo unique-key admission, no mocks.
+        from concurrent.futures import ThreadPoolExecutor
+
+        race_snapshot_a = copy.deepcopy(economic)
+        race_snapshot_a["snapshot_id"] = f"econ-race-a-{suffix}"
+        race_snapshot_b = copy.deepcopy(economic)
+        race_snapshot_b["snapshot_id"] = f"econ-race-b-{suffix}"
+        check(send(
+            client, "POST", "/economic-v2/snapshots", key_a, race_snapshot_a
+        ), 201)
+        check(send(
+            client, "POST", "/economic-v2/snapshots", key_a, race_snapshot_b
+        ), 201)
+        race_execution_id = f"econ-race-execution-{suffix}"
+
+        def competing_advice(snapshot_id: str) -> tuple[str, int]:
+            with httpx.Client(timeout=65) as competing_client:
+                response = send(
+                    competing_client, "POST", "/economic-v2/advice", key_a,
+                    {"snapshot_id": snapshot_id, "execution_id": race_execution_id},
+                )
+                return snapshot_id, response.status_code
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            outcomes = list(pool.map(
+                competing_advice,
+                [race_snapshot_a["snapshot_id"], race_snapshot_b["snapshot_id"]],
+            ))
+        assert sorted(status for _, status in outcomes) == [200, 409]
+        winner = next(snapshot for snapshot, status in outcomes if status == 200)
+        stored_race = check(
+            send(
+                client, "GET", f"/economic-v2/advice/{race_execution_id}", key_a
+            ), 200
+        )
+        assert stored_race["snapshot_id"] == winner
+        assert check(
+            send(
+                client, "GET",
+                f"/economic-v2/advice/{race_execution_id}/integrity",
+                key_a,
+            ), 200
+        )["kernel_manifest_verified"] is True
+
         # The independent FastAPI restart stage reopens these records from
         # Mongo with a new process and independently revalidates provenance.
         state = {
