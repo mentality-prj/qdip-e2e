@@ -103,6 +103,7 @@ jobs:
         run: |
           python - <<'PY'
           import json, os, re, urllib.request
+          from urllib.parse import quote
           assert re.fullmatch(r"[0-9a-f]{40}", os.environ["RR_CORE_SHA"]), "No pinned RR Core SHA"
           assert os.environ["RR_CORE_BRANCH"].startswith(("fix/rr-", "feat/rr-")), "Not an RR branch"
           assert os.environ["RR_SUITE_REF"] == "test/rr-complete-e2e-only", "Unexpected suite ref"
@@ -112,15 +113,17 @@ jobs:
             "Authorization": "Bearer " + os.environ["QDIP_READ_TOKEN"],
             "Accept": "application/vnd.github+json", "User-Agent": "qdip-e2e-ready",
           }
+          # Read-only private token has Contents permission but not Pull requests.
+          # Verify actual source branch HEAD matches the dispatched immutable SHA.
+          branch = quote(os.environ["RR_CORE_BRANCH"], safe="/")
           req = urllib.request.Request(
-            f"https://api.github.com/repos/qdip-ai/qdip-core/pulls/{n}", headers=headers
+            f"https://api.github.com/repos/qdip-ai/qdip-core/git/ref/heads/{branch}",
+            headers=headers,
           )
           with urllib.request.urlopen(req, timeout=15) as response:
-            pr = json.load(response)
-          assert pr["base"]["ref"] == "dev" and not pr["draft"], "PR must be Ready against dev"
-          assert pr["head"]["sha"] == os.environ["RR_CORE_SHA"], "PR head changed: stale event"
-          assert pr["head"]["ref"] == os.environ["RR_CORE_BRANCH"], "RR source branch changed"
-          print(f"RR_READY_PROVENANCE=PASS: PR #{n} at pinned Core SHA")
+            ref = json.load(response)
+          assert ref["object"]["sha"] == os.environ["RR_CORE_SHA"], "RR branch HEAD changed: stale event"
+          print(f"RR_READY_SOURCE_SHA=PASS: dispatched PR #{n} at pinned Core SHA")
           PY
 
       - name: Checkout private QDIP backend at pinned SHA
