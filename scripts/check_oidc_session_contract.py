@@ -14,6 +14,8 @@ def validate(root: Path) -> None:
     provision = (root / "suite/scripts/provision_tenants.py").read_text(encoding="utf-8")
     browser = (root / "suite/scripts/rr_oidc_session_browser.spec.ts").read_text(encoding="utf-8")
     matrix = (root / "suite/scripts/check_browser_report.py").read_text(encoding="utf-8")
+    runner = (root / "suite/scripts/run_real_e2e.sh").read_text(encoding="utf-8")
+    browser_config = (root / "suite/scripts/rr_real_playwright.config.ts").read_text(encoding="utf-8")
     checks = (
         ("cookie signing key", "QDIP_AUTH_COOKIE_SECRET" in web and
          "QDIP_AUTH_COOKIE_SECRET" in provision and "QDIP_AUTH_COOKIE_SECRET" in browser),
@@ -36,6 +38,18 @@ def validate(root: Path) -> None:
         ("legacy signer retired",
          "QDIP_WEB_SESSION_SIGNING_SECRET" not in provision and
          "QDIP_WEB_SESSION_SIGNING_SECRET" not in browser),
+        ("independent browser config is mandatory",
+         "BROWSER_CONFIG_ARGS=(--config=playwright.rr-real.config.ts)" in runner and
+         'pnpm exec playwright test "$SPEC" "${BROWSER_CONFIG_ARGS[@]}"' in runner and
+         "cp suite/scripts/rr_real_playwright.config.ts observatory/playwright.rr-real.config.ts" in runner),
+        ("browser starts anonymous, no Web default pre-signed cookie",
+         "storageState: { cookies: [], origins: [] }" in browser_config and
+         "oidcTestCookies" not in browser_config and
+         "oidcTestConfig" not in browser_config),
+        ("browser server signs with the same isolated secret",
+         "'QDIP_AUTH_COOKIE_SECRET'" in browser_config and
+         "env: Object.fromEntries(mandatory.map(" in browser_config and
+         "reuseExistingServer: false" in browser_config),
     )
     errors = [name for name, valid in checks if not valid]
     if errors:

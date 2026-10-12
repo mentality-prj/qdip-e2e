@@ -47,6 +47,29 @@ class BrowserGateTests(unittest.TestCase):
         self.assertFalse(check_browser_report.validate(report("legacy"), "unknown"))
 
 
+class IndependentBrowserConfigurationTests(unittest.TestCase):
+    def test_browser_uses_suiteshared_secret_and_no_default_auth_cookies(self) -> None:
+        root = Path(__file__).parent
+        runner = (root / "run_real_e2e.sh").read_text(encoding="utf-8")
+        config = (root / "rr_real_playwright.config.ts").read_text(encoding="utf-8")
+        default_web_config = "playwright.config.ts"
+        self.assertIn("--config=playwright.rr-real.config.ts", runner)
+        self.assertIn('pnpm exec playwright test "$SPEC" "${BROWSER_CONFIG_ARGS[@]}"', runner)
+        self.assertNotIn("oidcTestCookies", config)
+        self.assertNotIn("oidcTestConfig", config)
+        self.assertNotIn("import './" + default_web_config, config)
+        self.assertIn("storageState: { cookies: [], origins: [] }", config)
+        self.assertIn("'QDIP_AUTH_COOKIE_SECRET'", config)
+        self.assertIn("reuseExistingServer: false", config)
+
+    def test_browser_contract_asserts_dedicated_config(self) -> None:
+        root = Path(__file__).parent
+        guard = (root / "check_oidc_session_contract.py").read_text(encoding="utf-8")
+        self.assertIn("independent browser config is mandatory", guard)
+        self.assertIn("browser starts anonymous", guard)
+        self.assertIn("browser server signs with the same isolated secret", guard)
+
+
 class IsolatedOidcFixtureTests(unittest.TestCase):
     @staticmethod
     def source(name: str) -> str:
