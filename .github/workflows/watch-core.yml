@@ -42,3 +42,9 @@ jobs:
           QDIP_READ_TOKEN: ${{ secrets.QDIP_READ_TOKEN }}
           GITHUB_TOKEN: ${{ github.token }}
         run: python scripts/watch_core.py
+
+      - name: Dispatch RR Ready PR on same-repo token (Core PAT fallback)
+        env:
+          QDIP_READ_TOKEN: ${{ secrets.QDIP_READ_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/watch_rr_ready.py
