@@ -41,6 +41,14 @@ def main() -> None:
         "economic-v2/advice" in p and m == "GET" and s == 409
         for p, m, s in observations
     ), "missing fail-closed archive-tamper metric"
+    assert any(
+        "source-import/preflight" in p and m == "POST" and s == 422
+        for p, m, s in observations
+    ), "invalid normalized import must be recorded as 422 (not 500)"
+    assert any(
+        "source-import/preflight" in p and m == "POST" and s == 401
+        for p, m, s in observations
+    ), "invalid API key must be recorded as 401 (not 500)"
     print(f"RR_HTTP_METRICS_E2E=PASS events={len(observations)}")
 
 
