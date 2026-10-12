@@ -184,6 +184,11 @@ def main() -> None:
         run = {"snapshot_id": snap, "execution_id": f"econ-advice-{suffix}"}
         solved = check(send(client, "POST", "/economic-v2/advice", key_a, run), 200)
         assert solved["status"] == "OPTIMAL"
+        assert solved["optimality_proven"] is True
+        assert (
+            solved["solver_relative_gap"] is None
+            or float(solved["solver_relative_gap"]) >= 0
+        )
         assert solved["actionable"] is False
         assert solved["atomic_plan_committed"] is False
         assert solved["supply_source_verified"] is False

@@ -647,6 +647,7 @@ test('RR economic advice computes and archives with true Core/Mongo', async ({ p
   const breakdown = panel.getByTestId('rr-economic-v2-breakdown')
   await expect(breakdown).toBeVisible()
   await expect(breakdown).toContainText('Repair costs')
+  await expect(panel.getByTestId('rr-economic-v2-optimality')).toContainText('Proven optimal')
   const repeat = await page.request.get(`${ROUTE}/economic-v2/advice/${encodeURIComponent(advice.execution_id)}`)
   expect(repeat.status()).toBe(200)
   expect(await repeat.json()).toEqual(advice)
