@@ -3,19 +3,24 @@ run-name: QDIP E2E ${{ github.event.client_payload.backend_sha || inputs.backend
 
 on:
   repository_dispatch:
-    types: [qdip-core-updated]
+    types: [qdip-core-updated, rr-pr-ready]
   workflow_dispatch:
     inputs:
+      suite_ref:
+        description: "Independent E2E suite branch or SHA"
+        type: string
+        required: true
+        default: test/rr-complete-e2e-only
       backend_ref:
         description: "Backend branch or commit SHA"
         type: string
         required: true
-        default: dev
+        default: fix/rr-economic-v2-admission-donor-feasible
       observatory_ref:
         description: "Observatory branch or commit SHA"
         type: string
         required: true
-        default: dev
+        default: feat/rr-source-import-economic-advice
       rr_contract_mode:
         description: "Required RR contract; plugin mode fails closed if either source revision is incompatible"
         type: choice
@@ -54,7 +59,7 @@ jobs:
       - name: Checkout public independent E2E suite
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.client_payload.suite_sha || github.sha }}
+          ref: ${{ github.event.client_payload.suite_sha || inputs.suite_ref || github.sha }}
           path: suite
           persist-credentials: false
 
@@ -75,7 +80,7 @@ jobs:
         run: test -n "$SOURCE_TOKEN"
 
       - name: Validate automated dispatch provenance
-        if: github.event_name == 'repository_dispatch'
+        if: github.event_name == 'repository_dispatch' && github.event.action == 'qdip-core-updated'
         env:
           BACKEND_SHA: ${{ github.event.client_payload.backend_sha }}
           BACKEND_BRANCH: ${{ github.event.client_payload.backend_branch }}
@@ -159,7 +164,7 @@ jobs:
           echo 'HIGH_AVAILABILITY_SLA=NOT_TESTED'
 
       - name: Upload sanitized stage statuses only
-        if: always() && github.event_name == 'repository_dispatch'
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: qdip-e2e-phase-statuses
