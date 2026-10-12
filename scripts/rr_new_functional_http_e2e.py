@@ -255,6 +255,14 @@ def main() -> None:
                 f"/economic-v2/advice/{run['execution_id']}/integrity",
                 key_a,
             ).status_code == 409
+            assert send(
+                client, "GET",
+                f"/economic-v2/advice/{run['execution_id']}",
+                key_a,
+            ).status_code == 409
+            assert send(
+                client, "POST", "/economic-v2/advice", key_a, run
+            ).status_code == 409
         finally:
             archive_collection.update_one(
                 {"_id": archive_key}, {"$set": {
