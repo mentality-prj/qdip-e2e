@@ -674,6 +674,31 @@ test('RR economic advice computes and archives with true Core/Mongo', async ({ p
     actionable: false,
   })
   await expect(panel.getByTestId('rr-economic-v2-verified')).toBeVisible()
+  const downloading = page.waitForEvent('download')
+  await panel.getByTestId('rr-economic-v2-export').click()
+  const exported = await downloading
+  expect(exported.suggestedFilename()).toBe('rr-advice-' + advice.execution_id + '.json')
+  const path = await exported.path()
+  expect(path).toBeTruthy()
+  const document: unknown = JSON.parse(readFileSync(path!, 'utf8'))
+  expect(document).toMatchObject({
+    format_version: 'readiness-recovery.economic-evidence-export.v1',
+    authority: 'OPERATOR_SUBMITTED_NON_ACTIONABLE_ADVICE',
+    external_source_attested: false,
+    procurement_authorized: false,
+    stock_reserved: false,
+    advice: {
+      execution_id: advice.execution_id,
+      snapshot_digest: advice.snapshot_digest,
+      actionable: false,
+    },
+    integrity: {
+      archive_digest_verified: true,
+      snapshot_binding_verified: true,
+      kernel_manifest_verified: true,
+      actionable: false,
+    },
+  })
   const forbidden = await page.request.post(`${ROUTE}/economic-v2/orders`, {
     data: { execution_id: advice.execution_id }, headers: { Origin: ORIGIN },
   })
