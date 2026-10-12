@@ -43,6 +43,8 @@ values["RR_OPERATOR_PASSWORD"] = secrets.token_urlsafe(48)
 values["RR_OPERATOR_SESSION_SECRET"] = secrets.token_urlsafe(64)
 # Isolated Core/Web actor-attribution trust secret. Never use in production.
 values["RR_ACTOR_ASSERTION_SECRET"] = secrets.token_urlsafe(64)
+# Server-side MAC, separate from BFF identity and the Mongo data store.
+values["RR_ECONOMIC_EVIDENCE_HMAC_KEY"] = secrets.token_hex(32)
 # Isolated cryptographic BFF-session test. This issuer is deliberately NOT real
 # Zitadel; no external IdP or production identity may be used here.
 values["QDIP_AUTH_COOKIE_SECRET"] = secrets.token_urlsafe(64)

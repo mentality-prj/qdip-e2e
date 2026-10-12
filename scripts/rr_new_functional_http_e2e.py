@@ -233,6 +233,45 @@ def main() -> None:
         assert integrity["kernel_manifest_verified"] is True
         assert integrity["actionable"] is False
         assert integrity["snapshot_digest"] == registered["input_digest"]
+        # A Mongo writer cannot forge modeled money: changing both the
+        # displayed amount and unkeyed SHA-256 must still fail HMAC validation.
+        from pymongo import MongoClient
+
+        guard_client = MongoClient(os.environ["MONGODB_URL"])
+        guard_db = guard_client.get_default_database()
+        assert guard_db.name == "qdip_e2e"
+        guard_collection = guard_db["rr_economic_advice_archive"]
+        guard_key = f"rr-e2e-org-a:{run['execution_id']}"
+        saved = guard_collection.find_one({"_id": guard_key})
+        assert saved is not None
+        altered = copy.deepcopy(saved["response"])
+        altered["modeled_net_incremental_cents"] = "99999999"
+        import hashlib
+        digest = hashlib.sha256(json.dumps(
+            altered, sort_keys=True, separators=(",", ":"),
+            ensure_ascii=False, allow_nan=False,
+        ).encode("utf-8")).hexdigest()
+        try:
+            guard_collection.update_one(
+                {"_id": guard_key},
+                {"$set": {"response": altered, "response_digest": digest}},
+            )
+            assert send(
+                client, "GET",
+                f"/economic-v2/advice/{run['execution_id']}", key_a
+            ).status_code == 409
+            assert send(
+                client, "GET", "/economic-v2/advice?limit=25", key_a
+            ).status_code == 409
+        finally:
+            guard_collection.update_one(
+                {"_id": guard_key},
+                {"$set": {
+                    "response": saved["response"],
+                    "response_digest": saved["response_digest"],
+                }},
+            )
+            guard_client.close()
         # Real database-tampering negative case: even a recomputed archive
         # digest must not make a forged Kernel manifest pass provenance checks.
         # Confined to a hard-coded disposable native replica, then restored.
@@ -242,6 +281,7 @@ def main() -> None:
         db = mongo.get_default_database()
         assert db.name == "qdip_e2e"
         archive_collection = db["rr_economic_advice_archive"]
+        assert len(os.environ["RR_ECONOMIC_EVIDENCE_HMAC_KEY"]) == 64
         archive_key = f"rr-e2e-org-a:{run['execution_id']}"
         original = archive_collection.find_one({"_id": archive_key})
         assert original is not None

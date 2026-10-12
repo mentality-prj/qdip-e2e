@@ -22,6 +22,7 @@ variables in your shell:
 ```bash
 export RR_LOCAL_E2E_CONFIRMED=DISPOSABLE_ONLY
 export MONGODB_URL='mongodb://127.0.0.1:27019/qdip_e2e?replicaSet=rrtest&directConnection=true'
+export RR_ECONOMIC_EVIDENCE_HMAC_KEY='<64 hexadecimal digits, 32 random bytes; same as running Core>'
 export RR_SOURCE_POLICIES_JSON='{"rr-e2e-org-a":{"source_system":"rr-civilian-workshop-example","allowed_source_versions":["v1"],"max_source_age_seconds":120,"max_future_skew_seconds":0}}'
 # E2E_KEY_A and E2E_KEY_B must be separate keys of *synthetic* e2e tenants.
 bash scripts/run_rr_local_http_e2e.sh
@@ -41,3 +42,15 @@ The independent hosted E2E branch remains the separate full Core/Web/browser/
 native Mongo backup-restore/restart runner; the local command above covers
 only the real HTTP/Core/Kernel/Mongo economic and normalized-import flow.
 Do not claim end-to-end browser/real IdP PASS from a local HTTP-only result.
+
+
+Economic persistence is **not available** without
+`RR_ECONOMIC_EVIDENCE_HMAC_KEY` (32 independent server-generated random bytes
+encoded as exactly 64 lowercase/uppercase hex characters). Set the *same*
+key in the already-running test Core and local shell. It must never be
+committed to Git, copied from the MongoDB instance or shared with Next.js.
+The hosted independent E2E runner provisions its own disposable key.
+Replacing this key will prevent historical evidence verification; retain it
+securely for the lifetime of archived records or migrate records under an
+audited key-rotation procedure. Without it, only economic preflight is
+available, and persisted advice routes fail with HTTP 503.

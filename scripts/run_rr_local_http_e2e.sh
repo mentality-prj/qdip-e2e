@@ -19,6 +19,10 @@ EXPECTED_DB='mongodb://127.0.0.1:27019/qdip_e2e?replicaSet=rrtest&directConnecti
   echo 'RR_LOCAL_E2E=REJECTED: use the independent hosted runner in Actions' >&2
   exit 2
 }
+[[ -n "${RR_ECONOMIC_EVIDENCE_HMAC_KEY:-}" && "${#RR_ECONOMIC_EVIDENCE_HMAC_KEY}" == 64 ]] || {
+  echo 'RR_LOCAL_E2E=REJECTED: independent economic evidence HMAC key required' >&2
+  exit 2
+}
 [[ "${RR_SOURCE_POLICIES_JSON:-}" != '' ]] || {
   echo 'RR_LOCAL_E2E=REJECTED: RR_SOURCE_POLICIES_JSON must be configured in Core' >&2
   exit 2
