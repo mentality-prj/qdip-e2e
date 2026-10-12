@@ -406,6 +406,139 @@ test('isolated signed-session browser → real Core → CP-SAT → Mongo → rep
   expect(afterLogout.status()).toBe(401)
 })
 
+/**
+ * Economic-v2 source fixture mirrors the independent Core public-contract
+ * test: synthetic inputs only. It is a compiler/admission preview, NOT a
+ * solver decision, reservation, purchase order or financial advantage.
+ */
+function economicInput() {
+  const decisionId = 'econ-browser-' + Date.now().toString(36) + '-' + process.pid.toString(36)
+  return {
+    schema_version: 'readiness-recovery.economic-state.v2',
+    operational: {
+      decision_id: decisionId,
+      horizon_slots: 4,
+      workshop_capacity: 1,
+      technicians: [{ id: 'tech', skills: ['repair'], available_slots: [0, 1, 2] }],
+      jobs: [{
+        id: 'repair', duration_slots: 1, required_skills: ['repair'],
+        deadline_slot: 4, readiness_gain_units: 0,
+        parts: [{ part_id: 'bearing', quantity: 1 }],
+      }],
+    },
+    snapshot_id: 'synthetic-econ-browser-snapshot-v1',
+    assets: [{ id: 'machine', state_revision: 1 }],
+    restorations: [{ job_id: 'repair', asset_id: 'machine' }],
+    occupations: [{ job_id: 'repair', asset_ids: ['machine'] }],
+    job_costs: [{ job_id: 'repair', all_in_cost_cents: 0 }],
+    procurements: [
+      {
+        id: 'expedite', alternative_group_id: 'replacement-bearing',
+        part_id: 'bearing', quantity: 1, arrival_slot: 0, all_in_cost_cents: 150000,
+      },
+      {
+        id: 'regular', alternative_group_id: 'replacement-bearing',
+        part_id: 'bearing', quantity: 1, arrival_slot: 2, all_in_cost_cents: 20000,
+      },
+    ],
+    capabilities: [{
+      id: 'saleable-output', asset_ids: ['machine'],
+      contribution_cents_by_slot: [0, 100000, 100000, 100000],
+    }],
+  }
+}
+
+test('economic-v2 preview reaches real Core but cannot execute, mutate or authorize procurement', async ({ page }) => {
+  test.setTimeout(120_000)
+  const input = economicInput()
+  const endpoint = `${ROUTE}/economic-v2/preflight`
+  const post = (body: unknown) => page.request.post(endpoint, {
+    data: body, headers: { Origin: ORIGIN, 'Content-Type': 'application/json' },
+  })
+
+  const anonymous = await post(input)
+  mark('economic-anonymous-http', anonymous.status())
+  expect(anonymous.status()).toBe(401)
+
+  await installIsolatedOidcSession(page, 'studio')
+  const studio = await post(input)
+  mark('economic-studio-http', studio.status())
+  expect(studio.status()).toBe(401)
+
+  await installIsolatedOidcSession(page, 'rr', { organizationId: 'wrong-org' })
+  const wrongOrg = await post(input)
+  expect(wrongOrg.status()).toBe(401)
+  await installIsolatedOidcSession(page, 'rr')
+  const result = await post(input)
+  mark('economic-core-http', result.status())
+  expect(result.status()).toBe(200)
+  const compiled = (await result.json()) as Record<string, unknown>
+  expect(Object.keys(compiled).sort()).toEqual([
+    'schema_version', 'economic_version', 'decision_id', 'ir_semantic_hash',
+    'job_count', 'asset_count', 'procurement_offer_count', 'donor_extraction_count',
+    'state', 'actionable', 'supply_source_verified', 'atomic_plan_committed',
+  ].sort())
+  expect(compiled).toMatchObject({
+    schema_version: 'readiness-recovery.economic-preflight.v2',
+    economic_version: input.schema_version,
+    decision_id: input.operational.decision_id,
+    job_count: 1, asset_count: 1,
+    procurement_offer_count: 2, donor_extraction_count: 0,
+    state: 'COMPILED_PREVIEW_ONLY',
+    actionable: false, supply_source_verified: false, atomic_plan_committed: false,
+  })
+  expect(compiled.ir_semantic_hash).toMatch(/^[a-f0-9]{64}$/)
+  const repeated = await post(input)
+  expect(repeated.status()).toBe(200)
+  expect((await repeated.json()).ir_semantic_hash).toBe(compiled.ir_semantic_hash)
+  mark('economic-stable-compile', true)
+
+  const malformed = { ...input, procurements: [{ ...input.procurements[0], quantity: 0 }, input.procurements[1]] }
+  const rejected = await post(malformed)
+  mark('economic-invalid-http', rejected.status())
+  expect(rejected.status()).toBe(422)
+  for (const path of ['economic-v2/execute', 'economic-v2/orders', 'economic-v2/apply']) {
+    const denied = await page.request.post(`${ROUTE}/${path}`, {
+      data: input, headers: { Origin: ORIGIN },
+    })
+    expect(denied.status()).toBe(404)
+  }
+  mark('economic-no-action-routes', true)
+
+  const initialHistory = await page.request.get(`${ROUTE}/decisions/${input.operational.decision_id}/history`)
+  expect([200, 404]).toContain(initialHistory.status())
+  const initialCount = initialHistory.status() === 200
+    ? ((await initialHistory.json()) as { executions: unknown[] }).executions.length : 0
+  expect(initialCount).toBe(0)
+
+  await page.goto(PAGE, { waitUntil: 'domcontentloaded' })
+  const panel = page.getByTestId('rr-economic-v2-preflight')
+  await expect(panel).toBeVisible()
+  await expect(panel.getByTestId('rr-economic-v2-warning')).toContainText('NOT ACTIONABLE')
+  await panel.getByLabel('RR-ECON-v2 JSON').fill(JSON.stringify(input))
+  const response = page.waitForResponse((r) =>
+    r.url().endsWith('/api/rr-operator/kernel/economic-v2/preflight') &&
+    r.request().method() === 'POST'
+  )
+  await panel.getByRole('button', { name: 'Validate in Core (no execution)' }).click()
+  const actual = await response
+  mark('economic-browser-http', actual.status())
+  expect(actual.status()).toBe(200)
+  const preview = panel.getByTestId('rr-economic-v2-result')
+  await expect(preview).toBeVisible()
+  await expect(preview).toHaveAttribute('data-actionable', 'false')
+  await expect(preview).toContainText(String(compiled.ir_semantic_hash))
+  await expect(panel.getByRole('button', { name: /apply|execute|purchase/i })).toHaveCount(0)
+
+  const persisted = await page.evaluate(() => Object.values(localStorage).join(' '))
+  expect(persisted).not.toContain(input.operational.decision_id)
+  const afterHistory = await page.request.get(`${ROUTE}/decisions/${input.operational.decision_id}/history`)
+  expect([200, 404]).toContain(afterHistory.status())
+  if (afterHistory.status() === 200)
+    expect(((await afterHistory.json()) as { executions: unknown[] }).executions).toHaveLength(0)
+  mark('economic-zero-executions', true)
+})
+
 test('invalid input fails closed in real Core preflight; no fabricated decision appears', async ({ page }) => {
   actualInput()
   await installIsolatedOidcSession(page)
