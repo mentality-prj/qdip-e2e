@@ -149,12 +149,29 @@ def write_ledger(data: dict, existing_sha: str | None, token: str) -> None:
     api(f"/repos/{TARGET}/contents/{quote(LEDGER, safe='/')}", token, body=payload, method="PUT")
 
 
-def dispatch(branch: str, sha: str, token: str, mode: str, obs_branch: str) -> None:
+def dispatch(branch: str, sha: str, obs_sha: str, token: str, mode: str,
+             obs_branch: str, key: str, suite_sha: str) -> None:
     api(f"/repos/{TARGET}/dispatches", token,
         body={"event_type": "qdip-core-updated",
               "client_payload": {"repository": CORE, "backend_sha": sha, "backend_branch": branch,
-                                 "observatory_ref": obs_branch,
+                                 "observatory_ref": obs_branch, "observatory_sha": obs_sha,
+                                 "suite_sha": suite_sha, "qualification_key": key,
                                  "rr_contract_mode": mode}})
+
+
+def should_skip_unrelated(prior: dict, previous_sha: str | None, current_sha: str,
+                          obs_sha: str, suite_sha: str, observed_suite: str,
+                          token: str) -> bool:
+    """Only skip irrelevant Core changes after a PASS on the same Web and suite."""
+    attempt = prior.get("last_attempt", {})
+    return bool(
+        previous_sha and previous_sha != current_sha
+        and attempt.get("status") == "PASS"
+        and attempt.get("obs_sha") == obs_sha
+        and attempt.get("suite_sha") == suite_sha
+        and attempt.get("suite_fingerprint") == observed_suite
+        and not relevant_changes(previous_sha, current_sha, token)
+    )
 
 
 def main() -> int:
@@ -165,6 +182,9 @@ def main() -> int:
         print("QDIP_E2E_WATCH=MISSING_CREDENTIALS", file=sys.stderr)
         return 2
     observed_suite = fingerprint()
+    suite_sha = os.environ.get("GITHUB_SHA", "")
+    if not re.fullmatch(r"[a-f0-9]{40}", suite_sha):
+        raise RuntimeError("Watcher suite SHA is not pinned")
     data, etag = read_ledger(target)
     updated = False
     now = datetime.now(UTC)
@@ -189,7 +209,7 @@ def main() -> int:
                 updated = True
             print(f"QDIP_WATCH_PAIR_NOT_READY={branch}:RR_PLUGIN_NOT_MERGED")
             continue
-        key = hashlib.sha256(f"{sha}:{obs_sha}:{observed_suite}:{mode}".encode()).hexdigest()
+        key = hashlib.sha256(f"{sha}:{obs_sha}:{suite_sha}:{observed_suite}:{mode}".encode()).hexdigest()
         if not supported(sha, source):
             data["branches"][branch] = {**prior, "seen_sha": sha, "status": "UNSUPPORTED_RR"}
             updated = True
@@ -211,16 +231,17 @@ def main() -> int:
                     updated = True
                     print(f"QDIP_WATCH_INFRA_STALE={branch}")
                     continue
-        elif previous_sha != sha and not relevant_changes(previous_sha, sha, source):
+        elif should_skip_unrelated(prior, previous_sha, sha, obs_sha, suite_sha, observed_suite, source):
             data["branches"][branch] = {**prior, "seen_sha": sha, "status": "SKIPPED_UNRELATED"}
             updated = True
             print(f"QDIP_WATCH_UNRELATED={branch}")
             continue
-        dispatch(branch, sha, target, mode, obs_branch)
+        dispatch(branch, sha, obs_sha, target, mode, obs_branch, key, suite_sha)
         count = int(attempt.get("count", 0)) + 1 if attempt.get("key") == key else 1
         data["branches"][branch] = {"seen_sha": sha, "status": "DISPATCHED",
                                    "last_attempt": {"key": key, "backend_sha": sha, "obs_sha": obs_sha,
-                                                    "suite_fingerprint": observed_suite, "rr_contract_mode": mode,
+                                                    "suite_fingerprint": observed_suite, "suite_sha": suite_sha,
+                                                    "rr_contract_mode": mode,
                                                     "status": "DISPATCHED",
                                                     "count": count, "requested_at": now.isoformat()}}
         updated = True

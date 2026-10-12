@@ -11,14 +11,8 @@ import os
 import re
 from pathlib import Path
 
-REQUIRED = [
-    "public RR is a read-only civilian input example",
-    "anonymous browser cannot preflight",
-    "Studio-only Zitadel subject cannot access RR operator",
-    "tampered isolated OIDC session never authorizes",
-    "live browser → Core preflight",
-    "invalid input fails closed in real Core preflight",
-]
+from check_browser_report import MATRIX
+
 
 def specs(suites: list[dict]) -> list[dict]:
     items = []
@@ -39,7 +33,12 @@ def main() -> None:
         return
     all_cases = specs(report.get("suites", []))
     print("BROWSER_DIAGNOSTIC_SPEC_COUNT=" + str(len(all_cases)))
-    for idx, name in enumerate(REQUIRED):
+    mode = os.environ.get("RR_E2E_CONTRACT_MODE", "legacy")
+    required = MATRIX.get(mode, ())
+    if not required:
+        print("BROWSER_DIAGNOSTIC=UNSUPPORTED_MODE")
+        return
+    for idx, name in enumerate(required):
         matched = [s for s in all_cases if str(s.get("title", "")).startswith(name)]
         if len(matched) != 1:
             print(f"BROWSER_CASE_{idx+1}=MISSING_OR_DUPLICATE")

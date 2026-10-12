@@ -23,6 +23,9 @@ def main():
     token = os.environ["GITHUB_TOKEN"]
     branch = os.environ["E2E_BRANCH"]
     sha = os.environ["E2E_SHA"]
+    web_sha = os.environ["E2E_WEB_SHA"]
+    suite_sha = os.environ["E2E_SUITE_SHA"]
+    qualification_key = os.environ["E2E_QUALIFICATION_KEY"]
     statuses_file = Path(os.environ.get("E2E_PHASES_PATH") or str(Path(os.environ["RUNNER_TEMP"]) / "qdip-stage-results.jsonl"))
     observed = []
     if statuses_file.exists():
@@ -42,8 +45,16 @@ def main():
             ledger = json.loads(base64.b64decode(data["content"]))
             state = ledger["branches"].get(branch, {})
             attempt = state.get("last_attempt", {})
-            if attempt.get("backend_sha") != sha:
-                raise RuntimeError("E2E completion does not match current ledger")
+            if (
+                attempt.get("backend_sha") != sha
+                or attempt.get("obs_sha") != web_sha
+                or attempt.get("suite_sha") != suite_sha
+                or attempt.get("key") != qualification_key
+            ):
+                # A newer Core/Web/suite test superseded this dispatch.
+                # Never overwrite its result with a stale or failed old run.
+                print("QDIP_E2E_STALE_RUN_IGNORED")
+                return
             attempt["status"] = terminal
             attempt["run_id"] = os.environ["GITHUB_RUN_ID"]
             state["last_attempt"] = attempt
