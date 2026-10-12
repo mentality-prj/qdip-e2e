@@ -1,6 +1,16 @@
 name: Watch QDIP Core (no Core Actions)
 
 on:
+  # Suite changes are part of the qualification identity. Dispatch the latest
+  # Core/dev + Web/dev pair immediately after a reviewed main-branch merge.
+  # The watcher excludes mutable .state ledger writes to prevent recursion.
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/watch-core.yml'
+      - '.github/workflows/real-e2e.yml'
+      - 'scripts/**'
+      - 'fixtures/**'
   schedule:
     # Poll GitHub refs outside minute 0. Only changes trigger the expensive E2E.
     - cron: '17 * * * *'
