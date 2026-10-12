@@ -29,9 +29,6 @@ jobs:
       NEXT_PUBLIC_SITE_URL: 'http://qdip.localhost:3000'
       NEXT_PUBLIC_STUDIO_URL: 'http://studio.localhost:3000'
       NEXT_PUBLIC_OBSERVATORY_URL: 'http://observatory.localhost:3000'
-      MOCK_OIDC_CERT: ${{ runner.temp }}/oidc-cert.pem
-      MOCK_OIDC_KEY: ${{ runner.temp }}/oidc-key.pem
-      NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/oidc-cert.pem
     steps:
       - name: Checkout isolated public browser suite
         uses: actions/checkout@v4
@@ -65,19 +62,24 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          cert="$RUNNER_TEMP/oidc-cert.pem"
+          key="$RUNNER_TEMP/oidc-key.pem"
           openssl req -x509 -newkey rsa:2048 -nodes \
-            -keyout "$MOCK_OIDC_KEY" -out "$MOCK_OIDC_CERT" \
+            -keyout "$key" -out "$cert" \
             -days 1 -subj '/CN=identity.localhost' \
             -addext 'subjectAltName=DNS:identity.localhost' >/dev/null 2>&1
+          echo "MOCK_OIDC_CERT=$cert" >> "$GITHUB_ENV"
+          echo "MOCK_OIDC_KEY=$key" >> "$GITHUB_ENV"
+          echo "NODE_EXTRA_CA_CERTS=$cert" >> "$GITHUB_ENV"
           echo '127.0.0.1 identity.localhost qdip.localhost' | sudo tee -a /etc/hosts >/dev/null
           secret="$(openssl rand -base64 64 | tr -d '\n')"
           echo "::add-mask::$secret"
-          echo "QDIP_AUTH_COOKIE_SECRET=$secret" }} "$GITHUB_ENV"
+          echo "QDIP_AUTH_COOKIE_SECRET=$secret" >> "$GITHUB_ENV"
       - name: Start isolated HTTPS OIDC service
         shell: bash
         run: |
           node suite/scripts/mock_zitadel.mjs > "$RUNNER_TEMP/oidc-server.log" 2>&1 &
-          curl --insecure --fail --silent --retry 30 --retry-delay 1 --retry-connrefused \
+          curl --noproxy '*' --insecure --fail --silent --retry 30 --retry-delay 1 --retry-connrefused \
             https://identity.localhost:8443/health >/dev/null
       - name: Install Web dependencies, build and Chromium
         shell: bash
