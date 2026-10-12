@@ -188,6 +188,16 @@ def main() -> None:
             200,
         )
         assert archived == solved
+        listing = check(send(client, "GET", "/economic-v2/advice?limit=10", key_a), 200)
+        assert listing["schema_version"] == "readiness-recovery.economic-advice-list.v2"
+        assert any(
+            row["execution_id"] == run["execution_id"]
+            for row in listing["entries"]
+        )
+        other_listing = check(
+            send(client, "GET", "/economic-v2/advice?limit=10", key_b), 200
+        )
+        assert other_listing["entries"] == []
         assert check(
             send(client, "POST", "/economic-v2/advice", key_a, run), 200
         ) == archived

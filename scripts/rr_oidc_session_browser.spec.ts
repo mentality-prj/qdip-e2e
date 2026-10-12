@@ -647,6 +647,9 @@ test('RR economic advice computes and archives with true Core/Mongo', async ({ p
   const repeat = await page.request.get(`${ROUTE}/economic-v2/advice/${encodeURIComponent(advice.execution_id)}`)
   expect(repeat.status()).toBe(200)
   expect(await repeat.json()).toEqual(advice)
+  await panel.getByTestId('rr-economic-v2-list-advice').click()
+  const archivePanel = panel.getByTestId('rr-economic-v2-archive')
+  await expect(archivePanel).toContainText(advice.execution_id)
   await panel.getByRole('button', { name: 'Load archived advice' }).click()
   await expect(card).toContainText(advice.snapshot_digest)
   const forbidden = await page.request.post(`${ROUTE}/economic-v2/orders`, {
