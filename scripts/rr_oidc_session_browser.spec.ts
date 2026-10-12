@@ -114,14 +114,16 @@ async function markOperatorSession(page: import('@playwright/test').Page) {
   }
 }
 
-test('public RR is a read-only civilian input example, never a second solver', async ({ page }) => {
+test('anonymous RR workspace is role-gated; no public optimizer or preview leaks', async ({ page }) => {
   await page.goto(PAGE, { waitUntil: 'domcontentloaded' })
-  const preview = page.getByTestId('rr-reference-preview')
-  await expect(preview).toBeVisible()
-  await expect(preview).toContainText('diagnostic-check')
-  await expect(preview).toContainText('sensor-service')
-  await expect(preview).toContainText('input fixture')
-  await expect(preview).not.toContainText('Kernel optimal schedule')
+  const gate = page.getByTestId('qdip-access-gate')
+  await expect(gate).toBeVisible()
+  await expect(gate.getByRole('heading', { name: 'Sign in to continue' })).toBeVisible()
+  await expect(gate.getByText('RR Operator', { exact: true })).toBeVisible()
+  await expect(gate.getByRole('link', { name: 'Sign in' })).toBeVisible()
+  await expect(page.getByTestId('rr-kernel-only-workspace')).toHaveCount(0)
+  await expect(page.getByTestId('rr-reference-preview')).toHaveCount(0)
+  await expect(page.getByTestId('rr-production-operator')).toHaveCount(0)
 
   const deprecated = await page.request.post(`${ORIGIN}/readiness/scenarios`, {
     data: { input: { untrusted: true } },
@@ -195,25 +197,34 @@ test('signed RR role with wrong project, organization, issuer or expiry is denie
   }
 })
 
-test('anonymous and Studio-only browser cannot operate RR', async ({ page }) => {
+test('anonymous and Studio-only browser cannot access RR workspace or operate Core', async ({ page }) => {
   await page.goto(PAGE, { waitUntil: 'domcontentloaded' })
-  const panel = page.getByTestId('rr-production-operator')
-  await expect(panel).toBeVisible()
+  const gate = page.getByTestId('qdip-access-gate')
+  await expect(gate).toBeVisible()
+  await expect(gate.getByRole('heading', { name: 'Sign in to continue' })).toBeVisible()
+  await expect(gate.getByRole('link', { name: 'Sign in' })).toBeVisible()
+  await expect(page.getByTestId('rr-production-operator')).toHaveCount(0)
+  await expect(page.getByLabel('Kernel execution JSON')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Create execution' })).toHaveCount(0)
+  await expect(page.getByTestId('rr-decision-first')).toHaveCount(0)
+
   const anonymous = await page.request.get(`${ORIGIN}/api/auth/session`)
   expect(anonymous.status()).toBe(200)
   expect(await anonymous.json()).toMatchObject({ configured: true, authenticated: false, operator: false })
-  await expect(panel.getByRole('button', { name: 'Sign in with Zitadel' })).toBeVisible()
-  await expect(panel.getByLabel('Kernel execution JSON')).toHaveCount(0)
-  await expect(panel.getByRole('button', { name: 'Create execution' })).toHaveCount(0)
-  await expect(page.getByTestId('rr-decision-first')).toHaveCount(0)
+
   await installIsolatedOidcSession(page, 'studio')
   const denied = await page.request.get(`${ORIGIN}/api/rr-operator/session`)
   expect(denied.status()).toBe(200)
   expect(await denied.json()).toMatchObject({ configured: true, authenticated: false })
+  const deniedAction = await page.request.post(`${ROUTE}/executions`, { data: {} })
+  expect(deniedAction.status()).toBe(401)
   await page.reload()
-  await expect(panel.getByRole('button', { name: 'Sign in with Zitadel' })).toBeVisible()
-  await expect(panel.getByLabel('Kernel execution JSON')).toHaveCount(0)
-  await expect(panel.getByRole('button', { name: 'Create execution' })).toHaveCount(0)
+  await expect(gate).toBeVisible()
+  await expect(gate.getByRole('heading', { name: 'Access restricted' })).toBeVisible()
+  await expect(gate.getByText('RR Operator', { exact: true })).toBeVisible()
+  await expect(page.getByTestId('rr-production-operator')).toHaveCount(0)
+  await expect(page.getByLabel('Kernel execution JSON')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Create execution' })).toHaveCount(0)
   await expect(page.getByTestId('rr-decision-first')).toHaveCount(0)
 })
 
