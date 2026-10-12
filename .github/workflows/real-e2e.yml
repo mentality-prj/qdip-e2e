@@ -3,19 +3,24 @@ run-name: QDIP E2E ${{ github.event.client_payload.backend_sha || inputs.backend
 
 on:
   repository_dispatch:
-    types: [qdip-core-updated]
+    types: [qdip-core-updated, rr-pr-ready]
   workflow_dispatch:
     inputs:
+      suite_ref:
+        description: "Independent E2E suite branch or SHA"
+        type: string
+        required: true
+        default: test/rr-complete-e2e-only
       backend_ref:
         description: "Backend branch or commit SHA"
         type: string
         required: true
-        default: dev
+        default: fix/rr-economic-v2-admission-donor-feasible
       observatory_ref:
         description: "Observatory branch or commit SHA"
         type: string
         required: true
-        default: dev
+        default: feat/rr-source-import-economic-advice
       rr_contract_mode:
         description: "Required RR contract; plugin mode fails closed if either source revision is incompatible"
         type: choice
@@ -47,22 +52,26 @@ jobs:
       RR_TEST_MONGODB_URL: mongodb://127.0.0.1:27019/?replicaSet=rrtest&directConnection=true
       DIP_API_BASE_URL: http://127.0.0.1:8000
       RR_REFERENCE_OPERATOR_ENABLED: 'true'
+      RR_E2E_ONLY: ${{ github.event.action == 'rr-pr-ready' && '1' || github.event_name == 'workflow_dispatch' && '1' || '0' }}
+      RR_SOURCE_POLICIES_JSON: '{"rr-e2e-org-a":{"source_system":"rr-civilian-workshop-example","allowed_source_versions":["v1"],"max_source_age_seconds":120,"max_future_skew_seconds":0}}'
       RR_E2E_CONTRACT_MODE: ${{ github.event.client_payload.rr_contract_mode || inputs.rr_contract_mode || 'rr-oidc-session-v1' }}
     steps:
       - name: Checkout public independent E2E suite
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.client_payload.suite_sha || github.sha }}
+          ref: ${{ github.event.client_payload.suite_sha || github.event.client_payload.suite_ref || inputs.suite_ref || github.sha }}
           path: suite
           persist-credentials: false
 
       - name: Validate public E2E runner invariants before private checkout
+        if: env.RR_E2E_ONLY != '1'
         run: python -m unittest discover -s suite/tests -p 'test_runner_integrity.py' -v
 
       - name: Configure ephemeral reference path
         run: echo "RR_E2E_API_REQUEST_PATH=$RUNNER_TEMP/rr-reference-request.json" >> "$GITHUB_ENV"
 
       - name: Validate E2E workflow with actionlint before private source checkout
+        if: env.RR_E2E_ONLY != '1'
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 suite/.github/workflows/*.yml
 
       - name: Require restricted source read credential
@@ -71,7 +80,7 @@ jobs:
         run: test -n "$SOURCE_TOKEN"
 
       - name: Validate automated dispatch provenance
-        if: github.event_name == 'repository_dispatch'
+        if: github.event_name == 'repository_dispatch' && github.event.action == 'qdip-core-updated'
         env:
           BACKEND_SHA: ${{ github.event.client_payload.backend_sha }}
           BACKEND_BRANCH: ${{ github.event.client_payload.backend_branch }}
@@ -81,6 +90,38 @@ jobs:
           QUALIFICATION_KEY: ${{ github.event.client_payload.qualification_key }}
           QDIP_READ_TOKEN: ${{ secrets.QDIP_READ_TOKEN }}
         run: python suite/scripts/verify_dispatch.py
+
+      - name: Verify RR ready event matches current private PR
+        if: github.event.action == 'rr-pr-ready'
+        env:
+          QDIP_READ_TOKEN: ${{ secrets.QDIP_READ_TOKEN }}
+          RR_PR: ${{ github.event.client_payload.pr_number }}
+          RR_CORE_SHA: ${{ github.event.client_payload.backend_sha }}
+          RR_CORE_BRANCH: ${{ github.event.client_payload.backend_branch }}
+          RR_SUITE_REF: ${{ github.event.client_payload.suite_ref }}
+          RR_WEB_REF: ${{ github.event.client_payload.observatory_ref }}
+        run: |
+          python - <<'PY'
+          import json, os, re, urllib.request
+          assert re.fullmatch(r"[0-9a-f]{40}", os.environ["RR_CORE_SHA"]), "No pinned RR Core SHA"
+          assert os.environ["RR_CORE_BRANCH"].startswith(("fix/rr-", "feat/rr-")), "Not an RR branch"
+          assert os.environ["RR_SUITE_REF"] == "test/rr-complete-e2e-only", "Unexpected suite ref"
+          assert os.environ["RR_WEB_REF"] == "feat/rr-source-import-economic-advice", "Unexpected Web ref"
+          n = int(os.environ["RR_PR"])
+          headers = {
+            "Authorization": "Bearer " + os.environ["QDIP_READ_TOKEN"],
+            "Accept": "application/vnd.github+json", "User-Agent": "qdip-e2e-ready",
+          }
+          req = urllib.request.Request(
+            f"https://api.github.com/repos/qdip-ai/qdip-core/pulls/{n}", headers=headers
+          )
+          with urllib.request.urlopen(req, timeout=15) as response:
+            pr = json.load(response)
+          assert pr["base"]["ref"] == "dev" and not pr["draft"], "PR must be Ready against dev"
+          assert pr["head"]["sha"] == os.environ["RR_CORE_SHA"], "PR head changed: stale event"
+          assert pr["head"]["ref"] == os.environ["RR_CORE_BRANCH"], "RR source branch changed"
+          print(f"RR_READY_PROVENANCE=PASS: PR #{n} at pinned Core SHA")
+          PY
 
       - name: Checkout private QDIP backend at pinned SHA
         uses: actions/checkout@v4
@@ -96,7 +137,7 @@ jobs:
         with:
           repository: qdip-ai/qdip-web
           token: ${{ secrets.QDIP_READ_TOKEN }}
-          ref: ${{ github.event.client_payload.observatory_sha || inputs.observatory_ref || 'dev' }}
+          ref: ${{ github.event.client_payload.observatory_sha || github.event.client_payload.observatory_ref || inputs.observatory_ref || 'dev' }}
           path: observatory
           persist-credentials: false
 
@@ -124,13 +165,14 @@ jobs:
         run: bash suite/scripts/bootstrap_native.sh
 
       - name: Full Core canonical quality gate (Ruff, mypy, pytest, freeze evidence)
+        if: env.RR_E2E_ONLY != '1'
         shell: bash
         run: |
           cd backend
           python ../suite/scripts/safe_stage.py --timeout 1800 core-quality -- python -m app.quality
 
       - name: Verify Core signed-actor tests and Ruff for OIDC RR contract
-        if: env.RR_E2E_CONTRACT_MODE == 'rr-oidc-session-v1'
+        if: env.RR_E2E_CONTRACT_MODE == 'rr-oidc-session-v1' && env.RR_E2E_ONLY != '1'
         shell: bash
         run: |
           cd backend
@@ -154,7 +196,7 @@ jobs:
           echo 'HIGH_AVAILABILITY_SLA=NOT_TESTED'
 
       - name: Upload sanitized stage statuses only
-        if: always() && github.event_name == 'repository_dispatch'
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: qdip-e2e-phase-statuses
@@ -172,13 +214,14 @@ jobs:
             suite/reports/http-e2e-summary.json
             suite/reports/rr-plugin-contract-summary.json
             suite/reports/sdk-e2e-summary.json
+            ${{ runner.temp }}/rr-http-metrics-summary.json
           if-no-files-found: warn
           retention-days: 7
 
   finalize:
     name: Record result without running private source code
     needs: integration
-    if: always() && github.event_name == 'repository_dispatch' && github.event.repository.private == false
+    if: always() && github.event.action == 'qdip-core-updated' && github.event.repository.private == false
     runs-on: ubuntu-24.04
     timeout-minutes: 3
     permissions:
