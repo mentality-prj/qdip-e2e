@@ -188,6 +188,24 @@ def main() -> None:
             200,
         )
         assert archived == solved
+        integrity = check(
+            send(
+                client, "GET",
+                f"/economic-v2/advice/{run['execution_id']}/integrity",
+                key_a,
+            ),
+            200,
+        )
+        assert integrity["archive_digest_verified"] is True
+        assert integrity["snapshot_binding_verified"] is True
+        assert integrity["kernel_manifest_verified"] is True
+        assert integrity["actionable"] is False
+        assert integrity["snapshot_digest"] == registered["input_digest"]
+        assert send(
+            client, "GET",
+            f"/economic-v2/advice/{run['execution_id']}/integrity",
+            key_b,
+        ).status_code == 404
         listing = check(send(client, "GET", "/economic-v2/advice?limit=10", key_a), 200)
         assert listing["schema_version"] == "readiness-recovery.economic-advice-list.v2"
         assert any(

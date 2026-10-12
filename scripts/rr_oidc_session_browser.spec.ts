@@ -652,6 +652,24 @@ test('RR economic advice computes and archives with true Core/Mongo', async ({ p
   await expect(archivePanel).toContainText(advice.execution_id)
   await panel.getByRole('button', { name: 'Load archived advice' }).click()
   await expect(card).toContainText(advice.snapshot_digest)
+  const actualIntegrity = page.waitForResponse(r =>
+    r.url().endsWith('/economic-v2/advice/' + advice.execution_id + '/integrity') &&
+    r.request().method() === 'GET'
+  )
+  await panel.getByTestId('rr-economic-v2-verify-advice').click()
+  const verified = await actualIntegrity
+  expect(verified.status()).toBe(200)
+  const integrity = (await verified.json()) as {
+    archive_digest_verified: boolean; snapshot_binding_verified: boolean;
+    kernel_manifest_verified: boolean; actionable: boolean;
+  }
+  expect(integrity).toMatchObject({
+    archive_digest_verified: true,
+    snapshot_binding_verified: true,
+    kernel_manifest_verified: true,
+    actionable: false,
+  })
+  await expect(panel.getByTestId('rr-economic-v2-verified')).toBeVisible()
   const forbidden = await page.request.post(`${ROUTE}/economic-v2/orders`, {
     data: { execution_id: advice.execution_id }, headers: { Origin: ORIGIN },
   })
