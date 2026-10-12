@@ -21,11 +21,11 @@ MATRIX: dict[str, tuple[str, ...]] = {
         "reference operator: Kernel execution, reasoned replan",
     ),
     "rr-oidc-session-v1": (
-        "public RR is a read-only civilian input example",
+        "anonymous RR workspace is role-gated; no public optimizer or preview leaks",
         "anonymous browser cannot preflight",
         "isolated signed Studio-only role cannot access RR operator",
         "signed RR role with wrong project, organization, issuer or expiry is denied",
-        "anonymous and Studio-only browser cannot operate RR",
+        "anonymous and Studio-only browser cannot access RR workspace or operate Core",
         "tampered isolated OIDC session never authorizes",
         "isolated signed-session browser → real Core",
         "invalid input fails closed in real Core preflight",
