@@ -539,6 +539,123 @@ test('economic-v2 preview reaches real Core but cannot execute, mutate or author
   mark('economic-zero-executions', true)
 })
 
+test('RR normalized import executes and replans with true Core/Mongo', async ({ page }) => {
+  test.setTimeout(120_000)
+  await installIsolatedOidcSession(page, 'rr')
+  await page.goto(PAGE, { waitUntil: 'domcontentloaded' })
+  const panel = page.getByTestId('rr-production-operator')
+  await expect(panel).toBeVisible()
+  const input = actualInput()
+  const post = (path: string, payload: unknown) =>
+    page.request.post(`${ROUTE}/${path}`, {
+      data: payload, headers: { Origin: ORIGIN, 'Content-Type': 'application/json' },
+    })
+  const compiled = await post('preflight', input)
+  expect(compiled.status()).toBe(200)
+  const digest = (await compiled.json()) as { payload_digest: string }
+  expect(digest.payload_digest).toMatch(/^[a-f0-9]{64}$/)
+  const imported = {
+    format_version: 'readiness-recovery.normalized-import.v1',
+    ...input,
+    payload_digest: digest.payload_digest,
+  }
+  const bad = { ...imported, payload_digest: '0'.repeat(64) }
+  expect((await post('source-import/preflight', bad)).status()).toBe(422)
+  await panel.getByLabel('Kernel execution JSON').fill(JSON.stringify(imported))
+  await expect(panel.getByTestId('rr-kernel-preflight')).toContainText('Kernel preflight', { timeout: 30_000 })
+  await expect(panel.getByRole('button', { name: 'Create execution', exact: true })).toBeEnabled()
+  const executeDone = page.waitForResponse(r =>
+    r.url().endsWith('/source-import/executions') && r.request().method() === 'POST'
+  )
+  await panel.getByRole('button', { name: 'Create execution', exact: true }).click()
+  expect((await executeDone).status()).toBe(201)
+  await expect(panel.getByTestId('rr-decision-first')).toBeVisible({ timeout: 30_000 })
+  const persisted = await page.request.get(`${ROUTE}/executions/${encodeURIComponent(input.execution_id)}/presentation`)
+  expect(persisted.status()).toBe(200)
+  const stored = (await persisted.json()) as { payload_digest: string }
+  expect(stored.payload_digest).toBe(digest.payload_digest)
+
+  const revision = actualInput()
+  revision.execution_id = input.execution_id + '-2'
+  revision.source = input.source
+  revision.payload.decision_id = input.payload.decision_id
+  revision.payload.operator_directives = { excluded_job_ids: ['sensor-service'] }
+  revision.ingested_at = new Date().toISOString()
+  const compiledRevision = await post('preflight', revision)
+  expect(compiledRevision.status()).toBe(200)
+  const binding = (await compiledRevision.json()) as { payload_digest: string }
+  const importedRevision = {
+    format_version: 'readiness-recovery.normalized-import.v1',
+    ...revision, payload_digest: binding.payload_digest,
+  }
+  const replan = {
+    format_version: 'readiness-recovery.normalized-replan.v1',
+    change_id: 'rr-change-' + Date.now().toString(36),
+    kind: 'OVERRIDE',
+    reason: 'Synthetic operator directive for full browser E2E.',
+    requested_at: new Date().toISOString(),
+    import_document: importedRevision,
+  }
+  const path = `source-import/executions/${encodeURIComponent(input.execution_id)}/replan`
+  const response = await post(path, replan)
+  expect(response.status()).toBe(201)
+  const replay = await page.request.get(
+    `${ROUTE}/executions/${encodeURIComponent(revision.execution_id)}/replay-verification`
+  )
+  expect(replay.status()).toBe(200)
+  expect(((await replay.json()) as { verified: boolean }).verified).toBe(true)
+  const history = await page.request.get(
+    `${ROUTE}/decisions/${encodeURIComponent(input.payload.decision_id)}/history`
+  )
+  expect(history.status()).toBe(200)
+  expect(((await history.json()) as { executions: unknown[] }).executions).toHaveLength(2)
+  mark('rr-import-replan-browser-real-http', true)
+})
+
+test('RR economic advice computes and archives with true Core/Mongo', async ({ page }) => {
+  test.setTimeout(120_000)
+  await installIsolatedOidcSession(page, 'rr')
+  const input = economicInput()
+  input.snapshot_id = 'econ-e2e-' + Date.now().toString(36) + '-' + process.pid.toString(36)
+  await page.goto(PAGE, { waitUntil: 'domcontentloaded' })
+  const panel = page.getByTestId('rr-economic-v2-preflight')
+  await expect(panel).toBeVisible()
+  await panel.getByLabel('RR-ECON-v2 JSON').fill(JSON.stringify(input))
+  await panel.getByRole('button', { name: 'Validate in Core (no execution)' }).click()
+  await expect(panel.getByTestId('rr-economic-v2-result')).toBeVisible({ timeout: 30_000 })
+  const response = page.waitForResponse(r =>
+    r.url().endsWith('/economic-v2/advice') && r.request().method() === 'POST'
+  )
+  await panel.getByTestId('rr-economic-v2-advise').click()
+  const solved = await response
+  expect(solved.status()).toBe(200)
+  const advice = (await solved.json()) as {
+    schema_version: string; snapshot_id: string; snapshot_digest: string;
+    execution_id: string; actionable: boolean; atomic_plan_committed: boolean;
+    supply_source_verified: boolean; scheduled_jobs: unknown[];
+  }
+  expect(advice).toMatchObject({
+    schema_version: 'readiness-recovery.economic-advisory.v2',
+    snapshot_id: input.snapshot_id,
+    actionable: false, atomic_plan_committed: false, supply_source_verified: false,
+  })
+  expect(advice.snapshot_digest).toMatch(/^[a-f0-9]{64}$/)
+  expect(advice.scheduled_jobs.length).toBeGreaterThan(0)
+  const card = panel.getByTestId('rr-economic-v2-advice')
+  await expect(card).toHaveAttribute('data-actionable', 'false')
+  await expect(card).toContainText(advice.snapshot_digest)
+  const repeat = await page.request.get(`${ROUTE}/economic-v2/advice/${encodeURIComponent(advice.execution_id)}`)
+  expect(repeat.status()).toBe(200)
+  expect(await repeat.json()).toEqual(advice)
+  await panel.getByRole('button', { name: 'Load archived advice' }).click()
+  await expect(card).toContainText(advice.snapshot_digest)
+  const forbidden = await page.request.post(`${ROUTE}/economic-v2/orders`, {
+    data: { execution_id: advice.execution_id }, headers: { Origin: ORIGIN },
+  })
+  expect(forbidden.status()).toBe(404)
+  mark('economic-archive-browser-real-mongo', true)
+})
+
 test('invalid input fails closed in real Core preflight; no fabricated decision appears', async ({ page }) => {
   actualInput()
   await installIsolatedOidcSession(page)
