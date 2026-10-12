@@ -41,6 +41,7 @@ jobs:
         run: |
           node --experimental-strip-types --check scripts/rr_plugin_browser.spec.ts
           node --experimental-strip-types --check scripts/rr_oidc_session_browser.spec.ts
+          node --experimental-strip-types --check scripts/rr_real_playwright.config.ts
       - name: Validate fail-closed browser result checker
         run: python -m unittest discover -s scripts -p 'test_e2e_*.py' -v
       - name: Validate SHA-pinned watcher and stale-run result isolation

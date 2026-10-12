@@ -6,6 +6,7 @@ test -n "$E2E_KEY_A"
 test -n "$RR_E2E_OPERATOR_PASSWORD"
 test -n "$RR_E2E_API_REQUEST_PATH"
 RR_E2E_CONTRACT_MODE="${RR_E2E_CONTRACT_MODE:-legacy}"
+BROWSER_CONFIG_ARGS=()
 case "$RR_E2E_CONTRACT_MODE" in
   legacy|rr-plugin-v1|rr-oidc-session-v1) ;;
   *) echo 'RR_E2E_CONTRACT_MODE=INVALID' >&2; exit 2 ;;
@@ -76,6 +77,10 @@ esac
 )
 if [[ "$RR_E2E_CONTRACT_MODE" == "rr-oidc-session-v1" ]]; then
   cp suite/scripts/rr_oidc_session_browser.spec.ts observatory/e2e/rr_oidc_session_real_e2e.spec.ts
+  # The Web default config installs a *different* preauthenticated test
+  # session and signing key. Use a clean, suite-controlled browser config.
+  cp suite/scripts/rr_real_playwright.config.ts observatory/playwright.rr-real.config.ts
+  BROWSER_CONFIG_ARGS=(--config=playwright.rr-real.config.ts)
 elif [[ "$RR_E2E_CONTRACT_MODE" == "rr-plugin-v1" ]]; then
   cp suite/scripts/rr_plugin_browser.spec.ts observatory/e2e/rr_plugin_real_e2e.spec.ts
 fi
@@ -93,7 +98,7 @@ test -s "$RR_E2E_API_REQUEST_PATH"
   fi
   python ../suite/scripts/safe_stage.py --timeout 350 \
     --output "$RUNNER_TEMP/qdip-browser-report.json" browser-e2e -- \
-    pnpm exec playwright test "$SPEC" \
+    pnpm exec playwright test "$SPEC" "${BROWSER_CONFIG_ARGS[@]}" \
       --project=chromium --workers=1 --retries=0 --reporter=json --forbid-only
 )
 python suite/scripts/safe_stage.py --timeout 40 test-report -- python suite/scripts/check_browser_report.py
