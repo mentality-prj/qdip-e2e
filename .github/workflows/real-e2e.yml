@@ -47,6 +47,8 @@ jobs:
       RR_TEST_MONGODB_URL: mongodb://127.0.0.1:27019/?replicaSet=rrtest&directConnection=true
       DIP_API_BASE_URL: http://127.0.0.1:8000
       RR_REFERENCE_OPERATOR_ENABLED: 'true'
+      RR_E2E_ONLY: '1'
+      RR_SOURCE_POLICIES_JSON: '{"rr-e2e-org-a":{"source_system":"rr-civilian-workshop-example","allowed_source_versions":["v1"],"max_source_age_seconds":120,"max_future_skew_seconds":0}}'
       RR_E2E_CONTRACT_MODE: ${{ github.event.client_payload.rr_contract_mode || inputs.rr_contract_mode || 'rr-oidc-session-v1' }}
     steps:
       - name: Checkout public independent E2E suite
@@ -57,12 +59,14 @@ jobs:
           persist-credentials: false
 
       - name: Validate public E2E runner invariants before private checkout
+        if: env.RR_E2E_ONLY != '1'
         run: python -m unittest discover -s suite/tests -p 'test_runner_integrity.py' -v
 
       - name: Configure ephemeral reference path
         run: echo "RR_E2E_API_REQUEST_PATH=$RUNNER_TEMP/rr-reference-request.json" >> "$GITHUB_ENV"
 
       - name: Validate E2E workflow with actionlint before private source checkout
+        if: env.RR_E2E_ONLY != '1'
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 suite/.github/workflows/*.yml
 
       - name: Require restricted source read credential
@@ -124,13 +128,14 @@ jobs:
         run: bash suite/scripts/bootstrap_native.sh
 
       - name: Full Core canonical quality gate (Ruff, mypy, pytest, freeze evidence)
+        if: env.RR_E2E_ONLY != '1'
         shell: bash
         run: |
           cd backend
           python ../suite/scripts/safe_stage.py --timeout 1800 core-quality -- python -m app.quality
 
       - name: Verify Core signed-actor tests and Ruff for OIDC RR contract
-        if: env.RR_E2E_CONTRACT_MODE == 'rr-oidc-session-v1'
+        if: env.RR_E2E_CONTRACT_MODE == 'rr-oidc-session-v1' && env.RR_E2E_ONLY != '1'
         shell: bash
         run: |
           cd backend

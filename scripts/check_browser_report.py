@@ -29,6 +29,8 @@ MATRIX: dict[str, tuple[str, ...]] = {
         "tampered isolated OIDC session never authorizes",
         "isolated signed-session browser → real Core",
         "economic-v2 preview reaches real Core but cannot execute",
+        "RR normalized import executes and replans with true Core/Mongo",
+        "RR economic advice computes and archives with true Core/Mongo",
         "invalid input fails closed in real Core preflight",
     ),
     "rr-plugin-v1": (

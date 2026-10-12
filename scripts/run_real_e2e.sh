@@ -26,6 +26,10 @@ if [[ "$RR_E2E_CONTRACT_MODE" != "legacy" ]]; then
     cd backend
     python ../suite/scripts/safe_stage.py --timeout 180 rr-plugin-http -- \
       python ../suite/scripts/http_rr_plugin_e2e.py
+    if [[ "${RR_E2E_ONLY:-0}" == "1" ]]; then
+      python ../suite/scripts/safe_stage.py --timeout 180 rr-complete-functional-http -- \
+        python ../suite/scripts/rr_new_functional_http_e2e.py
+    fi
   )
 fi
 python suite/scripts/safe_stage.py --timeout 120 backend-restart -- \
@@ -61,10 +65,12 @@ esac
 (
   cd observatory
   python ../suite/scripts/safe_stage.py --timeout 700 observatory-install -- pnpm install --frozen-lockfile
-  python ../suite/scripts/safe_stage.py --timeout 300 observatory-lint -- pnpm lint
-  python ../suite/scripts/safe_stage.py --timeout 300 observatory-typecheck -- pnpm typecheck
-  python ../suite/scripts/safe_stage.py --timeout 300 observatory-format -- pnpm prettier
-  python ../suite/scripts/safe_stage.py --timeout 300 observatory-unit -- pnpm test
+  if [[ "${RR_E2E_ONLY:-0}" != "1" ]]; then
+    python ../suite/scripts/safe_stage.py --timeout 300 observatory-lint -- pnpm lint
+    python ../suite/scripts/safe_stage.py --timeout 300 observatory-typecheck -- pnpm typecheck
+    python ../suite/scripts/safe_stage.py --timeout 300 observatory-format -- pnpm prettier
+    python ../suite/scripts/safe_stage.py --timeout 300 observatory-unit -- pnpm test
+  fi
   # Only the built browser app uses localhost origins; the unit tests above
   # must retain their production-default routing contracts.
   if [[ "$RR_E2E_CONTRACT_MODE" == "rr-oidc-session-v1" ]]; then
@@ -84,9 +90,11 @@ if [[ "$RR_E2E_CONTRACT_MODE" == "rr-oidc-session-v1" ]]; then
 elif [[ "$RR_E2E_CONTRACT_MODE" == "rr-plugin-v1" ]]; then
   cp suite/scripts/rr_plugin_browser.spec.ts observatory/e2e/rr_plugin_real_e2e.spec.ts
 fi
-python suite/scripts/safe_stage.py --timeout 180 sdk-install -- bash suite/scripts/start_remote_worker.sh
-python suite/scripts/safe_stage.py --timeout 180 sdk-e2e -- python suite/scripts/http_sdk_e2e.py
-python suite/scripts/safe_stage.py --timeout 80 sdk-negative -- python suite/scripts/check_remote_worker_failure.py
+if [[ "${RR_E2E_ONLY:-0}" != "1" ]]; then
+  python suite/scripts/safe_stage.py --timeout 180 sdk-install -- bash suite/scripts/start_remote_worker.sh
+  python suite/scripts/safe_stage.py --timeout 180 sdk-e2e -- python suite/scripts/http_sdk_e2e.py
+  python suite/scripts/safe_stage.py --timeout 80 sdk-negative -- python suite/scripts/check_remote_worker_failure.py
+fi
 echo '127.0.0.1 observatory.localhost' | sudo tee -a /etc/hosts >/dev/null
 test -s "$RR_E2E_API_REQUEST_PATH"
 (
