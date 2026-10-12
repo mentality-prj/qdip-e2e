@@ -110,4 +110,8 @@ test -s "$RR_E2E_API_REQUEST_PATH"
       --project=chromium --workers=1 --retries=0 --reporter=json --forbid-only
 )
 python suite/scripts/safe_stage.py --timeout 40 test-report -- python suite/scripts/check_browser_report.py
+if [[ "${RR_E2E_ONLY:-0}" == "1" ]]; then
+  python suite/scripts/safe_stage.py --timeout 40 rr-http-metrics -- \
+    python suite/scripts/check_rr_http_observability.py
+fi
 echo 'QDIP_REAL_NATIVE_E2E=PASS (not production qualification)'
