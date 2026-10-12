@@ -277,7 +277,10 @@ def main() -> None:
         ), 200)["kernel_manifest_verified"] is True
         # Corrupted persisted source data must fail closed (HTTP 409), even
         # when the archive response itself remains intact.
-        source_collection = db["rr_economic_operator_snapshots"]
+        source_mongo = MongoClient(os.environ["MONGODB_URL"])
+        source_db = source_mongo.get_default_database()
+        assert source_db.name == "qdip_e2e"
+        source_collection = source_db["rr_economic_operator_snapshots"]
         snapshot_key = f"rr-e2e-org-a:{snap}"
         original_source = source_collection.find_one({"_id": snapshot_key})
         assert original_source is not None
@@ -299,6 +302,7 @@ def main() -> None:
                 {"_id": snapshot_key},
                 {"$set": {"request": original_source["request"]}},
             )
+            source_mongo.close()
         assert check(send(
             client, "GET", f"/economic-v2/advice/{run['execution_id']}/integrity",
             key_a,
