@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/**'
       - 'scripts/**'
+      - 'tests/**'
       - 'fixtures/**'
   workflow_dispatch:
 
@@ -29,7 +30,7 @@ jobs:
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 .github/workflows/*.yml
       - name: Validate standalone E2E Python sources and JSON fixture
         run: |
-          python -m compileall -q scripts
+          python -m compileall -q scripts tests
           python -m json.tool fixtures/rr_reference_api_v1.json >/dev/null
       - name: Check shell syntax
         run: bash -n scripts/*.sh
@@ -42,3 +43,5 @@ jobs:
           node --experimental-strip-types --check scripts/rr_oidc_session_browser.spec.ts
       - name: Validate fail-closed browser result checker
         run: python -m unittest discover -s scripts -p 'test_e2e_*.py' -v
+      - name: Validate SHA-pinned watcher and stale-run result isolation
+        run: python -m unittest discover -s tests -p 'test_runner_integrity.py' -v
