@@ -177,6 +177,7 @@ jobs:
             suite/reports/http-e2e-summary.json
             suite/reports/rr-plugin-contract-summary.json
             suite/reports/sdk-e2e-summary.json
+            ${{ runner.temp }}/rr-http-metrics-summary.json
           if-no-files-found: warn
           retention-days: 7
 
