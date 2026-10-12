@@ -89,6 +89,9 @@ jobs:
           set -euo pipefail
           cd observatory
           pnpm install --frozen-lockfile
+          pnpm lint
+          pnpm prettier
+          pnpm typecheck
           pnpm build
           pnpm exec playwright install --with-deps chromium
       - name: Run actual Web login + PKCE + RS256/JWKS + Userinfo browser tests

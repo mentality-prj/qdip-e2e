@@ -21,6 +21,18 @@ async function session(page: import('@playwright/test').Page) {
   }>
 }
 
+test('canonical site login redirects to isolated HTTPS IdP exactly once', async ({ request }) => {
+  const response = await request.get(
+    site + '/api/auth/login?return_to=' + encodeURIComponent(site + '/en'),
+    { maxRedirects: 0 }
+  )
+  expect(response.status()).toBe(302)
+  const location = response.headers()['location']
+  expect(location).toBeTruthy()
+  expect(new URL(location).origin).toBe(fakeIssuer)
+  expect(new URL(location).pathname).toBe('/oauth/v2/authorize')
+})
+
 test('full OIDC code+PKCE+JWKS login grants verified RR role', async ({ page }) => {
   await signIn(page, 'operator')
   await expect(page).toHaveURL(site + '/en')
