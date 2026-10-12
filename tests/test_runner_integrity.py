@@ -6,6 +6,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import tempfile
 import sys
 import unittest
@@ -14,12 +15,28 @@ from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+import check_browser_report
 import watch_core
 import verify_dispatch
 import report_run
 
 
 class RunnerIntegrityTests(unittest.TestCase):
+    def test_oidc_browser_required_matrix_matches_exact_spec_titles(self) -> None:
+        """Fail closed if Playwright tests are renamed without matrix update."""
+        suite_root = Path(__file__).resolve().parents[1]
+        source = (suite_root / "scripts/rr_oidc_session_browser.spec.ts").read_text(
+            encoding="utf-8"
+        )
+        titles = re.findall(r"^test\('([^']+)'", source, flags=re.MULTILINE)
+        required = check_browser_report.MATRIX["rr-oidc-session-v1"]
+        self.assertEqual(len(titles), 8)
+        self.assertEqual(len(required), 8)
+        for prefix in required:
+            self.assertEqual(sum(title.startswith(prefix) for title in titles), 1)
+        for title in titles:
+            self.assertEqual(sum(title.startswith(prefix) for prefix in required), 1)
+
     def test_suite_fingerprint_ignores_generated_cache_and_untracked_files(self) -> None:
         first = watch_core.fingerprint()
         root = Path(__file__).resolve().parents[1]
