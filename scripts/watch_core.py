@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -114,14 +115,31 @@ def relevant_changes(previous: str | None, current: str, token: str) -> bool:
 
 
 def fingerprint() -> str:
+    """Stable qualification identity from tracked source files only.
+
+    The independent runner imports this module before verifying the dispatch,
+    which generates scripts/__pycache__/*.pyc. Hashing all rglob() files made
+    otherwise identical watcher and runner Git checkouts disagree. Git's
+    tracked files are the canonical suite source of truth. Generated local
+    reports and Python bytecode must NEVER alter an acceptance key.
+    """
     digest = hashlib.sha256()
     root = Path(__file__).resolve().parents[1]
-    paths = [root / ".github/workflows/real-e2e.yml"]
-    paths += sorted(path for path in (root / "scripts").rglob("*") if path.is_file())
-    paths += sorted(path for path in (root / "fixtures").rglob("*") if path.is_file())
-    for path in paths:
-        relative = path.relative_to(root).as_posix()
-        digest.update(relative.encode())
+    selected = subprocess.check_output(
+        [
+            "git", "-C", str(root), "ls-files", "-z", "--",
+            ".github/workflows/real-e2e.yml", "scripts", "fixtures",
+        ],
+        timeout=10,
+    )
+    files = sorted(item.decode("utf-8") for item in selected.split(b"\0") if item)
+    if not files or ".github/workflows/real-e2e.yml" not in files:
+        raise RuntimeError("E2E source fingerprint cannot find tracked runner files")
+    for relative in files:
+        path = root / relative
+        if not path.is_file() or path.is_symlink():
+            raise RuntimeError("E2E source fingerprint requires regular tracked files")
+        digest.update(relative.encode("utf-8"))
         digest.update(bytes([0]))
         digest.update(path.read_bytes())
         digest.update(bytes([0]))

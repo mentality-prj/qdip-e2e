@@ -6,6 +6,7 @@ import hashlib
 import io
 import json
 import os
+import tempfile
 import sys
 import unittest
 from contextlib import redirect_stdout
@@ -19,6 +20,29 @@ import report_run
 
 
 class RunnerIntegrityTests(unittest.TestCase):
+    def test_suite_fingerprint_ignores_generated_cache_and_untracked_files(self) -> None:
+        first = watch_core.fingerprint()
+        root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory(prefix="e2e-generated-", dir=root / "scripts") as directory:
+            generated = Path(directory)
+            (generated / "temporary.pyc").write_bytes(b"not-committed-bytecode")
+            (generated / "transient.json").write_text('{"ignore":true}', encoding="utf-8")
+            self.assertEqual(watch_core.fingerprint(), first)
+        self.assertEqual(watch_core.fingerprint(), first)
+
+    def test_suite_fingerprint_tracks_runner_and_script_paths(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        import subprocess
+        result = subprocess.check_output(
+            ["git", "-C", str(root), "ls-files", "--",
+             ".github/workflows/real-e2e.yml", "scripts", "fixtures"],
+            text=True,
+        )
+        self.assertIn(".github/workflows/real-e2e.yml", result)
+        self.assertIn("scripts/watch_core.py", result)
+        self.assertEqual(len(watch_core.fingerprint()), 64)
+
+
     def test_dispatch_pins_entire_qualification_pair(self) -> None:
         core, web, suite = "a" * 40, "b" * 40, "c" * 40
         key = "d" * 64
