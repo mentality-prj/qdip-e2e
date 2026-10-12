@@ -1,0 +1,108 @@
+name: Web OIDC browser code-flow integration (isolated provider)
+
+on:
+  push:
+    branches: [main, 'test/rr-web-oidc-code-flow']
+    paths:
+      - 'scripts/mock_zitadel.mjs'
+      - 'scripts/rr_oidc_exchange_browser.spec.ts'
+      - 'scripts/rr_oidc_exchange_playwright.config.ts'
+      - '.github/workflows/web-oidc-simulator.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  web-login:
+    if: github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      ZITADEL_ISSUER: 'https://identity.localhost:8443'
+      ZITADEL_CLIENT_ID: 'qdip-e2e-client'
+      ZITADEL_QDIP_PROJECT_ID: '123456789'
+      ZITADEL_QDIP_ORGANIZATION_ID: '987654321'
+      QDIP_RR_ZITADEL_ROLE_KEY: 'rr_operator'
+      QDIP_STUDIO_ZITADEL_ROLE_KEY: 'studio'
+      NEXT_PUBLIC_SITE_URL: 'http://qdip.localhost:3000'
+      NEXT_PUBLIC_STUDIO_URL: 'http://studio.localhost:3000'
+      NEXT_PUBLIC_OBSERVATORY_URL: 'http://observatory.localhost:3000'
+    steps:
+      - name: Checkout isolated public browser suite
+        uses: actions/checkout@v4
+        with:
+          path: suite
+          persist-credentials: false
+      - name: Checkout only public QDIP Web
+        uses: actions/checkout@v4
+        with:
+          repository: qdip-ai/qdip-web
+          ref: dev
+          path: observatory
+          persist-credentials: false
+      - name: Record exact Web and E2E SHAs
+        run: |
+          echo "QDIP_WEB_SHA=$(git -C observatory rev-parse HEAD)"
+          echo "QDIP_E2E_SHA=$(git -C suite rev-parse HEAD)"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.22.0
+          run_install: false
+      - name: Generate disposable HTTPS certificate and cookie secret
+        shell: bash
+        run: |
+          set -euo pipefail
+          cert="$RUNNER_TEMP/oidc-cert.pem"
+          key="$RUNNER_TEMP/oidc-key.pem"
+          openssl req -x509 -newkey rsa:2048 -nodes \
+            -keyout "$key" -out "$cert" \
+            -days 1 -subj '/CN=identity.localhost' \
+            -addext 'subjectAltName=DNS:identity.localhost' >/dev/null 2>&1
+          echo '127.0.0.1 identity.localhost qdip.localhost' | sudo tee -a /etc/hosts >/dev/null
+          secret="$(openssl rand -base64 64 | tr -d '\n')"
+          echo "::add-mask::$secret"
+          {
+            echo "MOCK_OIDC_CERT=$cert"
+            echo "MOCK_OIDC_KEY=$key"
+            echo "NODE_EXTRA_CA_CERTS=$cert"
+            echo "QDIP_AUTH_COOKIE_SECRET=$secret"
+          } >> "$GITHUB_ENV"
+      - name: Start isolated HTTPS OIDC service
+        shell: bash
+        run: |
+          node suite/scripts/mock_zitadel.mjs > "$RUNNER_TEMP/oidc-server.log" 2>&1 &
+          curl --noproxy '*' --insecure --fail --silent --retry 30 --retry-delay 1 --retry-connrefused \
+            https://identity.localhost:8443/health >/dev/null
+      - name: Install Web dependencies, build and Chromium
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd observatory
+          pnpm install --frozen-lockfile
+          pnpm lint
+          pnpm prettier
+          pnpm typecheck
+          # Unit assertions expect canonical production-domain routing.
+          NEXT_PUBLIC_SITE_URL=https://qdip.ai \
+          NEXT_PUBLIC_STUDIO_URL=https://studio.qdip.ai \
+          NEXT_PUBLIC_OBSERVATORY_URL=https://observatory.qdip.ai \
+            pnpm test
+          pnpm build
+          pnpm exec playwright install --with-deps chromium
+      - name: Run actual Web login + PKCE + RS256/JWKS + Userinfo browser tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp suite/scripts/rr_oidc_exchange_browser.spec.ts observatory/e2e/rr_oidc_exchange_real_e2e.spec.ts
+          cp suite/scripts/rr_oidc_exchange_playwright.config.ts observatory/playwright.rr-oidc-exchange.config.ts
+          cd observatory
+          pnpm exec playwright test e2e/rr_oidc_exchange_real_e2e.spec.ts \
+            --config=playwright.rr-oidc-exchange.config.ts \
+            --project=chromium --workers=1 --retries=0 --reporter=line --forbid-only
+          echo 'QDIP_WEB_REAL_OIDC_BROWSER_WITH_ISOLATED_PROVIDER=PASS'
+          echo 'QDIP_LIVE_EXTERNAL_ZITADEL=NOT_TESTED'
