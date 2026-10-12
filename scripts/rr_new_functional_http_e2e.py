@@ -66,6 +66,18 @@ def main() -> None:
         check(send(client, "POST", endpoint, key_a, imported), 200)
         assert send(client, "POST", endpoint, key_b, imported).status_code == 503
         assert send(client, "POST", endpoint, "invalid-key", imported).status_code == 401
+        # Raw duplicate JSON fields must be rejected by the actual HTTP importer
+        # before model validation. Do not assume browser JSON.parse proves this.
+        duplicate = json.dumps(imported).replace(
+            '"format_version":', '"format_version":"readiness-recovery.normalized-import.v1",'
+            '"format_version":', 1
+        )
+        duplicate_response = client.post(
+            BASE + endpoint,
+            content=duplicate,
+            headers={"x-api-key": key_a, "content-type": "application/json"},
+        )
+        assert duplicate_response.status_code == 422
         with_bad_digest = {**imported, "payload_digest": "0" * 64}
         assert send(client, "POST", endpoint, key_a, with_bad_digest).status_code == 422
         with_bad_source = copy.deepcopy(imported)
@@ -201,6 +213,50 @@ def main() -> None:
         assert integrity["kernel_manifest_verified"] is True
         assert integrity["actionable"] is False
         assert integrity["snapshot_digest"] == registered["input_digest"]
+        # Real database-tampering negative case: even a recomputed archive
+        # digest must not make a forged Kernel manifest pass provenance checks.
+        # Confined to a hard-coded disposable native replica, then restored.
+        from pymongo import MongoClient
+
+        mongo = MongoClient(os.environ["MONGODB_URL"])
+        db = mongo.get_default_database()
+        assert db.name == "qdip_e2e"
+        archive_collection = db["rr_economic_advice_archive"]
+        archive_key = f"rr-e2e-org-a:{run['execution_id']}"
+        original = archive_collection.find_one({"_id": archive_key})
+        assert original is not None
+        modified = copy.deepcopy(original["response"])
+        modified["manifest"]["ir_hash"] = "0" * 64
+        tampered_hash = __import__("hashlib").sha256(
+            json.dumps(
+                modified, sort_keys=True, separators=(",", ":"),
+                ensure_ascii=False, allow_nan=False,
+            ).encode("utf-8")
+        ).hexdigest()
+        try:
+            changed = archive_collection.update_one(
+                {"_id": archive_key}, {"$set": {
+                    "response": modified, "response_digest": tampered_hash,
+                }}
+            )
+            assert changed.matched_count == 1
+            assert send(
+                client, "GET",
+                f"/economic-v2/advice/{run['execution_id']}/integrity",
+                key_a,
+            ).status_code == 409
+        finally:
+            archive_collection.update_one(
+                {"_id": archive_key}, {"$set": {
+                    "response": original["response"],
+                    "response_digest": original["response_digest"],
+                }}
+            )
+            mongo.close()
+        assert check(send(
+            client, "GET", f"/economic-v2/advice/{run['execution_id']}/integrity",
+            key_a,
+        ), 200)["kernel_manifest_verified"] is True
         assert send(
             client, "GET",
             f"/economic-v2/advice/{run['execution_id']}/integrity",
