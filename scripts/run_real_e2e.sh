@@ -39,6 +39,10 @@ python suite/scripts/safe_stage.py --timeout 120 backend-restart -- \
   python ../suite/scripts/safe_stage.py --timeout 120 backend-restart-verify -- \
     python ../suite/scripts/check_fastapi_restart.py
 )
+if [[ "${RR_E2E_ONLY:-0}" == "1" ]]; then
+  python suite/scripts/safe_stage.py --timeout 130 rr-economic-evidence-mac -- \
+    python suite/scripts/check_rr_economic_evidence_key_e2e.py
+fi
 python suite/scripts/safe_stage.py --timeout 70 rr-auth-revocation -- python suite/scripts/check_revocation.py
 # The test mode must match the selected *real* Web implementation.
 # Never downgrade OIDC to the retired password-login suite.
