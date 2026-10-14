@@ -1,11 +1,9 @@
 name: QDIP Doctor real existing Zitadel user P0
 run-name: Doctor P0 existing user browser test
 on:
-  push:
-    branches: [test/doctor-live-zitadel-user-p0]
-    paths:
-      - .github/workflows/doctor-live-zitadel-user-p0.yml
-      - scripts/doctor_live_zitadel_user_p0.mjs
+  # One-shot verification already ran successfully. Require explicit launch
+  # for future tests so normal pushes never replay the real user password.
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
