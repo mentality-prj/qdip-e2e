@@ -1,0 +1,101 @@
+name: VHV pinned source qualification
+
+on:
+  push:
+    branches: [test/vhv-landing-e2e]
+    paths:
+      - '.github/workflows/vhv-private-qualification.yml'
+      - 'scripts/safe_stage.py'
+  workflow_dispatch:
+    inputs:
+      vhv_sha:
+        description: Immutable private VHV commit SHA
+        required: true
+        type: string
+        default: 9a3f258cc6cdc109a966a1dc3536746dfc3a96cc
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vhv-pinned-quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source:
+    if: github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      DATABASE_URL: postgresql://secretary:secretary_ci@127.0.0.1:5432/secretary_ci?schema=public
+      NEXTAUTH_URL: http://localhost:3000
+      AUTH_SECRET: vhv-isolated-qualification-secret-only-32-characters
+      ZITADEL_ISSUER: https://example.zitadel.cloud
+      ZITADEL_CLIENT_ID: qualification-client
+      ZITADEL_API_AUDIENCE: qualification-api
+      SECRETARY_API_URL: http://localhost:4000
+      VHV_PINNED_SHA: ${{ inputs.vhv_sha || '9a3f258cc6cdc109a966a1dc3536746dfc3a96cc' }}
+    steps:
+      - name: Checkout public test harness only
+        uses: actions/checkout@v4
+        with:
+          path: suite
+          persist-credentials: false
+      - name: Check immutable SHA and read token are configured
+        env:
+          SOURCE_TOKEN: ${{ secrets.QDIP_READ_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$VHV_PINNED_SHA" =~ ^[a-f0-9]{40}$ ]] || { echo 'VHV_SHA=INVALID'; exit 2; }
+          test -n "$SOURCE_TOKEN" || { echo 'VHV_SOURCE_READ=UNCONFIGURED'; exit 2; }
+          echo 'VHV_SOURCE_READ=ATTEMPT'
+      - name: Checkout pinned private VHV as read-only
+        uses: actions/checkout@v4
+        with:
+          repository: qdip-ai/qdip-personal-secretary
+          token: ${{ secrets.QDIP_READ_TOKEN }}
+          ref: ${{ inputs.vhv_sha || '9a3f258cc6cdc109a966a1dc3536746dfc3a96cc' }}
+          path: vhv
+          persist-credentials: false
+      - name: Verify immutable source identity
+        shell: bash
+        run: |
+          test "$(git -C vhv rev-parse HEAD)" = "$VHV_PINNED_SHA"
+          echo "VHV_TESTED_SHA=$VHV_PINNED_SHA"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Node dependencies and Prisma client, sanitized
+        shell: bash
+        run: |
+          set -euo pipefail
+          python suite/scripts/safe_stage.py vhv-install --cwd vhv --timeout 500 -- npm ci --no-audit --no-fund
+          python suite/scripts/safe_stage.py vhv-prisma --cwd vhv --timeout 120 -- npm run db:generate
+      - name: VHV offline source contract tests
+        run: python suite/scripts/safe_stage.py vhv-unit --cwd vhv --timeout 300 -- npm test
+      - name: Nest API and Next production build, including hero asset generation
+        run: python suite/scripts/safe_stage.py vhv-build --cwd vhv --timeout 600 -- npm run build
+      - name: Check generated production WebP metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import pathlib,struct
+          root=pathlib.Path('vhv/apps/web/public')
+          for name in ('vhv-hero-desktop.webp','vhv-hero-mobile.webp'):
+              data=(root/name).read_bytes()
+              assert data[:4]==b'RIFF' and data[8:12]==b'WEBP'
+              assert len(data)>15000
+              print(f'VHV_GENERATED_ASSET_{name}=PASS ({len(data)} bytes)')
+          PY
+      - name: Sanitized source qualification summary
+        run: |
+          echo "VHV_PINNED_BUILD_AND_UNIT=PASS"
+          echo "VHV_AUTHENTICATED_E2E=NOT_TESTED"
+          echo "VHV_POSTGRESQL_INTEGRATION=NOT_TESTED"
+          echo "VHV_DEPLOYED_SOURCE_SHA=NOT_TESTED"
