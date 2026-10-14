@@ -1,0 +1,54 @@
+name: VHV public landing browser E2E
+
+on:
+  push:
+    branches: [main, test/vhv-landing-e2e]
+    paths:
+      - '.github/workflows/vhv-public-e2e.yml'
+      - 'scripts/vhv_public_smoke.cjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vhv-public-landing-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  public-landing:
+    if: github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      VHV_BASE_URL: https://vhv.qdip.ai
+      VHV_E2E_OUTPUT: reports/vhv-public-smoke
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.cache/playwright
+    steps:
+      - name: Checkout public E2E scripts (no source or customer data)
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate independent browser test syntax
+        run: node --check scripts/vhv_public_smoke.cjs
+      - name: Install isolated Playwright Chromium
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-save --no-package-lock --ignore-scripts playwright@1.56.1
+          ./node_modules/.bin/playwright install --with-deps chromium
+      - name: Run real anonymous UA/EN browser checks at 8 viewports
+        timeout-minutes: 7
+        run: node scripts/vhv_public_smoke.cjs
+      - name: Public screenshots and scoped results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vhv-public-landing-e2e
+          path: reports/vhv-public-smoke/
+          if-no-files-found: warn
+          retention-days: 7
