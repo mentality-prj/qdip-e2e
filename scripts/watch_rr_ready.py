@@ -1,4 +1,4 @@
-"""Dispatch real RR PR #331 E2E from the E2E repo's own Actions token.
+"""Dispatch pinned, approved RR HMAC rotation PR E2E from the E2E repo's own Actions token.
 
 The Core repository's cross-repository PAT is optional for this fallback:
 the independent watcher can read the private PR via QDIP_READ_TOKEN and
@@ -19,11 +19,11 @@ from urllib.request import Request, urlopen
 CORE = "qdip-ai/qdip-core"
 WEB = "qdip-ai/qdip-web"
 E2E = "qdip-ai/qdip-e2e"
-PR_NUMBER = 331
-RR_BRANCH = "fix/rr-economic-v2-admission-donor-feasible"
+PR_NUMBER = 362
+RR_BRANCH = "fix/rr-economic-hmac-rotation-20261015"
 STATE_PATH = ".state/rr-ready-watch.json"
-WEB_REF = "feat/rr-source-import-economic-advice"
-SUITE_REF = "test/rr-complete-e2e-only"
+WEB_REF = "dev"
+SUITE_REF = "main"
 SHA = re.compile(r"[0-9a-f]{40}\Z")
 
 
@@ -67,7 +67,7 @@ def main() -> None:
     assert read_token and own_token, "Required watcher credential missing"
 
     # Private token is Contents:Read only; Pull requests API is forbidden.
-    # GitHub connector confirmed PR #331 is Ready before enabling this fallback.
+    # GitHub connector confirmed PR #362 is Ready before enabling this fallback.
     branch = RR_BRANCH
     core_sha = branch_head(CORE, branch, read_token)
     web_sha = branch_head(WEB, WEB_REF, read_token)
