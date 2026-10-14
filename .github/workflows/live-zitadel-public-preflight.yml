@@ -1,0 +1,34 @@
+name: QDIP real Zitadel public OIDC preflight (no credentials)
+on:
+  push:
+    branches: [test/zitadel-live-public-preflight]
+    paths:
+      - scripts/check_live_zitadel_preflight.py
+      - .github/workflows/live-zitadel-public-preflight.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  oidc-public:
+    if: github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify real issuer, QDIP redirect/PKCE/JWKS and anonymous RR isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/check_live_zitadel_preflight.py
+          python scripts/check_live_zitadel_preflight.py
+      - name: Reject false production authorization qualification
+        if: success()
+        run: |
+          echo "REAL_USER_LOGIN=NOT_TESTED"
+          echo "REAL_USER_ROLE_GRANTS=NOT_TESTED"
+          echo "No human or test-account login, organization membership, or operational RR acceptance is implied."
