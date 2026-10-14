@@ -26,9 +26,15 @@ async function check(browser, variant) {
   const page=await context.newPage();
   const errors=[];
   page.on('pageerror', e=>errors.push(e.name));
-  const target=url+'/'+lang;
+  // VHV has /login, not locale-prefixed routes. Language is browser state.
+  const target=url+'/login';
   try {
     const response=await page.goto(target,{waitUntil:'domcontentloaded',timeout:35000});
+    if(lang==='en') {
+      const switchToEnglish=page.getByRole('button',{name:'EN',exact:true});
+      await switchToEnglish.waitFor({state:'visible',timeout:10000});
+      await switchToEnglish.click();
+    }
     assert.ok(response && response.status() >= 200 && response.status() < 400,'Landing HTTP status '+response?.status());
     await page.locator('h1').first().waitFor({state:'visible',timeout:20000});
     const h1=await page.locator('h1').first().innerText();
