@@ -170,23 +170,31 @@ test('isolated signed Studio-only role cannot access RR operator', async ({ page
 
 
 test('signed RR role with wrong project, organization, issuer or expiry is denied', async ({ page }) => {
-  const invalid: Partial<IsolatedClaims>[] = [
-    { projectId: '123456788' },
-    { organizationId: '987654320' },
-    { issuer: 'https://other-e2e.invalid' },
-    { expiresAt: Math.floor(Date.now() / 1000) - 10 },
-    { expiresAt: Math.floor(Date.now() / 1000) + 7200 },
-    { roles: [] },
-    { roles: ['studio'] },
+  // Authentication (a valid signed session) does not imply RR authorization.
+  // A session with zero roles or Studio-only is authenticated, but must still
+  // be denied every RR operation. Invalid identity bindings are unauthenticated.
+  const invalid: { claims: Partial<IsolatedClaims>; authenticated: boolean }[] = [
+    { claims: { projectId: '123456788' }, authenticated: false },
+    { claims: { organizationId: '987654320' }, authenticated: false },
+    { claims: { issuer: 'https://other-e2e.invalid' }, authenticated: false },
+    { claims: { expiresAt: Math.floor(Date.now() / 1000) - 10 }, authenticated: false },
+    { claims: { expiresAt: Math.floor(Date.now() / 1000) + 7200 }, authenticated: false },
+    { claims: { roles: [] }, authenticated: true },
+    { claims: { roles: ['studio'] }, authenticated: true },
   ]
-  for (const changed of invalid) {
-    await installIsolatedOidcSession(page, 'rr', changed)
+  for (const { claims, authenticated } of invalid) {
+    await installIsolatedOidcSession(page, 'rr', claims)
     const global = await page.request.get(`${ORIGIN}/api/auth/session`)
     expect(global.status()).toBe(200)
-    const identity = (await global.json()) as { configured: boolean; authenticated: boolean; operator: boolean }
-    expect(identity.configured).toBe(true)
-    expect(identity.operator).toBe(false)
-    expect(identity.authenticated).toBe(changed.roles?.[0] === 'studio')
+    const identity = (await global.json()) as {
+      configured: boolean; authenticated: boolean; operator: boolean; studio: boolean
+    }
+    expect(identity).toMatchObject({
+      configured: true,
+      authenticated,
+      operator: false,
+      studio: authenticated && claims.roles?.includes('studio') === true,
+    })
     const rr = await page.request.get(`${ORIGIN}/api/rr-operator/session`)
     expect(rr.status()).toBe(200)
     expect(await rr.json()).toMatchObject({ configured: true, authenticated: false })
@@ -194,6 +202,8 @@ test('signed RR role with wrong project, organization, issuer or expiry is denie
     expect(denied.status()).toBe(401)
     const executeDenied = await page.request.post(`${ROUTE}/executions`, { data: {} })
     expect(executeDenied.status()).toBe(401)
+    const evidenceDenied = await page.request.get(`${ROUTE}/executions/not-allowed/presentation`)
+    expect(evidenceDenied.status()).toBe(401)
   }
 })
 
