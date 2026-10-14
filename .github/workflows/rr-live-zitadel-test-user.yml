@@ -1,0 +1,66 @@
+name: RR real Zitadel existing test-user browser E2E
+on:
+  push:
+    branches: [test/zitadel-live-public-preflight]
+    paths:
+      - scripts/rr_live_zitadel_test_user.mjs
+      - .github/workflows/rr-live-zitadel-test-user.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  existing-user-login:
+    if: github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: suite
+          persist-credentials: false
+      - name: Require existing Zitadel test account credential binding
+        env:
+          TEST_LOGIN: ${{ secrets.QDIP_E2E_ZITADEL_TEST_LOGIN }}
+          TEST_PASSWORD: ${{ secrets.QDIP_E2E_ZITADEL_TEST_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$TEST_LOGIN" || -z "$TEST_PASSWORD" ]]; then
+            echo 'LIVE_ZITADEL_TEST_USER_SECRET_BINDING=MISSING'
+            echo 'Existing account identity is not available to this E2E runner; real-user E2E was not executed.'
+            exit 2
+          fi
+          echo 'LIVE_ZITADEL_TEST_USER_SECRET_BINDING=PASS'
+      - name: Checkout the deployed-Web source only for Playwright dependencies
+        uses: actions/checkout@v4
+        with:
+          repository: qdip-ai/qdip-web
+          ref: dev
+          path: web
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.22.0
+          run_install: false
+      - name: Install Chromium and run a single real-account OIDC browser login
+        env:
+          QDIP_E2E_ZITADEL_TEST_LOGIN: ${{ secrets.QDIP_E2E_ZITADEL_TEST_LOGIN }}
+          QDIP_E2E_ZITADEL_TEST_PASSWORD: ${{ secrets.QDIP_E2E_ZITADEL_TEST_PASSWORD }}
+          CI: 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp suite/scripts/rr_live_zitadel_test_user.mjs web/rr_live_zitadel_test_user.mjs
+          cd web
+          pnpm install --frozen-lockfile
+          pnpm exec playwright install --with-deps chromium
+          node rr_live_zitadel_test_user.mjs
+      - name: Explicitly retain the separate negative-real-identity gate
+        if: success()
+        run: |
+          echo 'REAL_WRONG_ORG_ACCOUNT=NOT_TESTED'
+          echo 'REAL_ROLELESS_ACCOUNT=NOT_TESTED'
+          echo 'NO_PRODUCTION_RR_MUTATION_PERFORMED=TRUE'
