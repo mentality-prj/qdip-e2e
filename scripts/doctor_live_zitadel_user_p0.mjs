@@ -40,14 +40,19 @@ async function main(){
 
     const page=await context.newPage();
     page.setDefaultTimeout(12000);
+    // Check the INITIAL OAuth redirect before the browser follows it to
+    // Zitadel's hosted login UI (which may not retain PKCE query params).
+    const start=await anon.get(SITE+"/auth/login?lang=uk",{maxRedirects:0});
+    check(start.status()===303,"DOCTOR_OAUTH_START_NOT_REDIRECTED");
+    const authorization=new URL(start.headers()["location"]||"");
+    check(authorization.protocol==="https:"&&authorization.origin!==SITE
+      &&authorization.searchParams.get("code_challenge_method")==="S256"
+      &&authorization.searchParams.get("redirect_uri")===SITE+"/auth/callback",
+      "DOCTOR_PKCE_REDIRECT_INVALID");
     const initial=await page.goto(SITE+"/auth/login?lang=uk",{
       waitUntil:"domcontentloaded",timeout:30000});
-    check(Boolean(initial),"DOCTOR_LOGIN_NO_RESPONSE");
-    const redirect=new URL(page.url());
-    check(redirect.protocol==="https:"&&redirect.origin!==SITE
-      &&redirect.searchParams.get("code_challenge_method")==="S256"
-      &&redirect.searchParams.get("redirect_uri")===SITE+"/auth/callback",
-      "DOCTOR_PKCE_REDIRECT_INVALID");
+    check(Boolean(initial)&&new URL(page.url()).origin!==SITE,
+      "DOCTOR_ZITADEL_LOGIN_FORM_NOT_REACHED");
     console.log("DOCTOR_P0_LIVE_ZITADEL_PKCE=PASS");
 
     const user=await field(page,[
