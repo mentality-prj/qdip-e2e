@@ -53,11 +53,27 @@ async function check(browser, variant) {
     const scene=page.locator('.login-scene');
     await scene.waitFor({state:'visible',timeout:10000});
     const styles=await scene.evaluate(el=>{
-      const s=getComputedStyle(el);
-      return {image:s.backgroundImage,animation:s.animationName};
+      const shell=getComputedStyle(el);
+      const img=getComputedStyle(el.querySelector('.login-scene__image'));
+      const layout=getComputedStyle(el.parentElement);
+      const copy=getComputedStyle(el.parentElement.querySelector('.login-details'));
+      const sceneBounds=el.getBoundingClientRect();
+      const headingBounds=el.parentElement.querySelector('h1').getBoundingClientRect();
+      const ctaBounds=el.parentElement.querySelector('.login-submit').getBoundingClientRect();
+      return {image:img.backgroundImage,animation:img.animationName,
+        position:shell.position,grid:layout.gridTemplateAreas,
+        sceneTop:sceneBounds.top,headingTop:headingBounds.top,
+        ctaTop:ctaBounds.top,copyZ:copy.zIndex,sceneZ:shell.zIndex};
     });
     assert.match(styles.image,/vhv-hero-approved\.webp/,'Approved artwork is missing');
     assert.equal(styles.animation,'none','Reduced motion must disable decorative movement');
+    if(width<=850) {
+      assert.equal(styles.position,'absolute','Mobile image must be a background, not a block');
+      assert.equal(styles.grid,'"details"','Mobile must not allocate a second artwork grid row');
+      assert.ok(styles.sceneTop<=styles.headingTop,'Background must start behind the heading');
+      assert.ok(styles.sceneTop<styles.ctaTop,'Background must not appear only below CTA');
+      assert.ok(Number(styles.copyZ)>Number(styles.sceneZ),'Sign-in content must layer above the artwork');
+    }
     const artResponse=await page.request.get(url+'/vhv-hero-approved.webp',{timeout:15000});
     assert.equal(artResponse.status(),200,'Approved WebP must load');
     assert.match(artResponse.headers()['content-type']||'',/image\/webp/,'Expected actual WebP media type');
