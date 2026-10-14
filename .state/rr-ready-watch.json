@@ -1,7 +1,7 @@
 {
-  "core_sha": "0baf7624d0167fded2f61dfd1e38fa08da4f3cb6",
-  "key": "2225a7bbbacc7bd2ebcbf792b296e78abfb93190841df59c064adcbcaaa62d10",
-  "last_dispatched_utc": "2026-10-14T23:32:31.917122+00:00",
-  "suite_sha": "fca0f4158c1d13dacc3518d0a48272dc7086ab6a",
-  "web_sha": "072c2655b47ba2492a0bd4660a3b2fe684f569f9"
+  "core_sha": "390604100d34d932e1f1cc3082fb8fcb24e9621c",
+  "key": "8ced2929b19ae90d8b2c90fbc668c5621b263846df87c26a2b468163f6f79d33",
+  "last_dispatched_utc": "2026-10-14T23:58:59.612819+00:00",
+  "suite_sha": "e00d9922de0e13a1a9fd436e9d1978eb00f48295",
+  "web_sha": "af8303c7cf3ba749f8419074d0ec5e6cd92cf33e"
 }
