@@ -38,7 +38,7 @@ async function check(browser, variant) {
     assert.ok(response && response.status() >= 200 && response.status() < 400,'Landing HTTP status '+response?.status());
     await page.locator('h1').first().waitFor({state:'visible',timeout:20000});
     const h1=await page.locator('h1').first().innerText();
-    assert.ok(lang==='uk' ? /Знайдіть час/.test(h1) : /find time/i.test(h1),
+    assert.ok(lang==='uk' ? /Знайдіть час/.test(h1) : /make time for what matters/i.test(h1),
       'Expected localized, visible value proposition');
     const button=page.getByRole('button',{name:lang==='uk'?/Увійти/:/sign in|log in/i}).first();
     await button.waitFor({state:'visible',timeout:10000});
