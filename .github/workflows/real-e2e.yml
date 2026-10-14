@@ -106,8 +106,8 @@ jobs:
           from urllib.parse import quote
           assert re.fullmatch(r"[0-9a-f]{40}", os.environ["RR_CORE_SHA"]), "No pinned RR Core SHA"
           assert os.environ["RR_CORE_BRANCH"].startswith(("fix/rr-", "feat/rr-")), "Not an RR branch"
-          assert os.environ["RR_SUITE_REF"] == "test/rr-complete-e2e-only", "Unexpected suite ref"
-          assert os.environ["RR_WEB_REF"] == "feat/rr-source-import-economic-advice", "Unexpected Web ref"
+          assert os.environ["RR_SUITE_REF"] == "main", "Unexpected suite ref"
+          assert os.environ["RR_WEB_REF"] == "dev", "Unexpected Web ref"
           n = int(os.environ["RR_PR"])
           headers = {
             "Authorization": "Bearer " + os.environ["QDIP_READ_TOKEN"],
