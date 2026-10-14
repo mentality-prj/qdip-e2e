@@ -1,0 +1,62 @@
+name: QDIP Doctor real existing Zitadel user P0
+run-name: Doctor P0 existing user browser test
+on:
+  push:
+    branches: [test/doctor-live-zitadel-user-p0]
+    paths:
+      - .github/workflows/doctor-live-zitadel-user-p0.yml
+      - scripts/doctor_live_zitadel_user_p0.mjs
+permissions:
+  contents: read
+concurrency:
+  group: doctor-real-zitadel-p0
+  cancel-in-progress: false
+jobs:
+  real-user-browser:
+    if: github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify existing encrypted test credentials
+        env:
+          TEST_LOGIN: ${{ secrets.QDIP_E2E_ZITADEL_TEST_LOGIN }}
+          TEST_PASSWORD: ${{ secrets.QDIP_E2E_ZITADEL_TEST_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$TEST_LOGIN" || -z "$TEST_PASSWORD" ]]; then
+            echo 'DOCTOR_EXISTING_TEST_USER_SECRET_BINDING=MISSING'
+            exit 2
+          fi
+          echo 'DOCTOR_EXISTING_TEST_USER_SECRET_BINDING=PASS'
+      - name: Install isolated Chromium Playwright runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/doctor-p0-runner
+          cp scripts/doctor_live_zitadel_user_p0.mjs /tmp/doctor-p0-runner/
+          cd /tmp/doctor-p0-runner
+          npm init -y >/dev/null
+          npm install --no-save --ignore-scripts @playwright/test@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Real Zitadel browser login and production Doctor CP-SAT E2E
+        env:
+          QDIP_E2E_ZITADEL_TEST_LOGIN: ${{ secrets.QDIP_E2E_ZITADEL_TEST_LOGIN }}
+          QDIP_E2E_ZITADEL_TEST_PASSWORD: ${{ secrets.QDIP_E2E_ZITADEL_TEST_PASSWORD }}
+          CI: 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /tmp/doctor-p0-runner
+          node doctor_live_zitadel_user_p0.mjs
+      - name: Preserve negative real-identity gates
+        if: success()
+        run: |
+          echo 'DOCTOR_REAL_WRONG_ORG_ROLELESS=NOT_TESTED'
+          echo 'DOCTOR_MOBILE_ACCESSIBILITY=NOT_TESTED'
