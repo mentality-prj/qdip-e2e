@@ -33,11 +33,19 @@ async function check(browser, variant) {
     if(lang==='en') {
       const switchToEnglish=page.getByRole('button',{name:'EN',exact:true});
       await switchToEnglish.waitFor({state:'visible',timeout:10000});
-      await switchToEnglish.click();
-      await page.waitForFunction(() =>
-        document.documentElement.lang === 'en' &&
-        /make time for what matters/i.test(document.querySelector('h1')?.textContent||''),
-        null,{timeout:7000});
+      // App Router may render the button before React binds its click handler.
+      // Retrying the same locale selection is idempotent and avoids false E2E failures.
+      let switched=false;
+      for(let attempt=0;attempt<3&&!switched;attempt++) {
+        await switchToEnglish.click();
+        try {
+          await page.waitForFunction(() =>
+            document.documentElement.lang === 'en' &&
+            /make time for what matters/i.test(document.querySelector('h1')?.textContent||''),
+            null,{timeout:2500});
+          switched=true;
+        } catch {if(attempt===2) throw Error('English language toggle failed after hydration');}
+      }
     }
     assert.ok(response && response.status() >= 200 && response.status() < 400,'Landing HTTP status '+response?.status());
     await page.locator('h1').first().waitFor({state:'visible',timeout:20000});
