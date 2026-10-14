@@ -52,6 +52,14 @@ async function check(browser, variant) {
     const h1=await page.locator('h1').first().innerText();
     assert.ok(lang==='uk' ? /Знайдіть час/.test(h1) : /make time for what matters/i.test(h1),
       'Expected localized, visible value proposition; actual: '+h1.slice(0,100));
+    // Prevent returning to the oversized VHV SVG mask: the original literal
+    // VHV. lettering must appear beside the unchanged QDIP wordmark.
+    const letters=page.locator('.product-lockup-product');
+    await letters.waitFor({state:'visible',timeout:10000});
+    assert.equal((await letters.innerText()).trim(),'VHV.');
+    assert.equal(await page.locator('.product-lockup-vhv').count(),0,
+      'Obsolete VHV image mark must not be rendered');
+    await page.locator('.product-lockup-wordmark').waitFor({state:'visible',timeout:10000});
     const button=page.getByRole('button',{name:lang==='uk'?/Увійти/:/sign in|log in/i}).first();
     await button.waitFor({state:'visible',timeout:10000});
     assert.ok(await button.isEnabled(),'Zitadel sign-in CTA must be enabled');
