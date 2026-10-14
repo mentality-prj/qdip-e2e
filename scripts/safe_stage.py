@@ -19,6 +19,8 @@ ALLOWED = {
     "observatory-unit", "observatory-build", "browser-install", "browser-e2e",
     "sdk-install", "sdk-e2e", "sdk-negative", "rr-auth-revocation", "test-report",
     "rr-actor-unit", "rr-actor-ruff", "core-quality", "observatory-format",
+    # RR-only stages executed by scripts/run_real_e2e.sh; keep these explicit.
+    "rr-complete-functional-http", "rr-economic-evidence-mac", "rr-http-metrics",
 }
 
 def main() -> int:
