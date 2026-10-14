@@ -1,10 +1,7 @@
 name: RR real Zitadel existing test-user browser E2E
 on:
-  push:
-    branches: [test/zitadel-live-public-preflight]
-    paths:
-      - scripts/rr_live_zitadel_test_user.mjs
-      - .github/workflows/rr-live-zitadel-test-user.yml
+  # Interactive login is not available for the qdip-dev-agent machine user.
+  # Only run explicitly once a separately configured browser identity exists.
   workflow_dispatch:
 permissions:
   contents: read
