@@ -16,12 +16,27 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import check_browser_report
+import safe_stage
 import watch_core
 import verify_dispatch
 import report_run
 
 
 class RunnerIntegrityTests(unittest.TestCase):
+    def test_rr_only_runner_stages_are_allowlisted(self) -> None:
+        """The RR runner must not fail argparse before executing its tests."""
+        required = {
+            "rr-complete-functional-http",
+            "rr-economic-evidence-mac",
+            "rr-http-metrics",
+        }
+        self.assertTrue(required.issubset(safe_stage.ALLOWED))
+        runner = (Path(__file__).resolve().parents[1] / "scripts/run_real_e2e.sh").read_text(
+            encoding="utf-8"
+        )
+        for stage in required:
+            self.assertIn(f" {stage} --", runner)
+
     def test_oidc_browser_required_matrix_matches_exact_spec_titles(self) -> None:
         """Fail closed if Playwright tests are renamed without matrix update."""
         suite_root = Path(__file__).resolve().parents[1]
