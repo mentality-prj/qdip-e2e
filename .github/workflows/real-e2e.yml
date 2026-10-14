@@ -172,7 +172,7 @@ jobs:
         shell: bash
         run: |
           cd backend
-          python ../suite/scripts/safe_stage.py --timeout 1800 core-quality -- python -m app.quality
+          python ../suite/scripts/safe_stage.py --timeout 1800 core-quality -- python -c 'from app.quality import main; main()'
 
       - name: Verify Core signed-actor tests and Ruff for OIDC RR contract
         if: env.RR_E2E_CONTRACT_MODE == 'rr-oidc-session-v1' && env.RR_E2E_ONLY != '1'
