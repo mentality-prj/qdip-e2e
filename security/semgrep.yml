@@ -1,0 +1,28 @@
+# Local OSS-only Semgrep rules. No Semgrep Registry / SaaS rules or metrics.
+# High-signal patterns only: a PASS does not prove absence of vulnerabilities.
+rules:
+  - id: qdip-js-eval
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: Dynamic JavaScript evaluation can enable code execution.
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: new Function(...)
+  - id: qdip-python-eval-exec
+    languages: [python]
+    severity: ERROR
+    message: Dynamic Python evaluation can enable code execution.
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: exec(...)
+  - id: qdip-python-shell-true
+    languages: [python]
+    severity: ERROR
+    message: Shell execution through subprocess requires explicit review.
+    patterns:
+      - pattern: subprocess.$FUNC(..., shell=True, ...)
+  - id: qdip-python-insecure-requests
+    languages: [python]
+    severity: ERROR
+    message: TLS certificate verification is disabled.
+    pattern: requests.$METHOD(..., verify=False, ...)
