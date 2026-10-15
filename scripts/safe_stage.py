@@ -96,6 +96,27 @@ def main() -> int:
     # Separate sanitized phase ledger for final TEST_FAIL vs INFRA_FAIL status.
     with (Path(temp) / "qdip-stage-results.jsonl").open("a", encoding="utf-8") as out:
         out.write(json.dumps({"stage": args.stage, "status": status}) + chr(10))
+    if args.stage == "core-quality" and status != "PASS" and path.exists():
+        # Core's canonical quality entrypoint prints only the selected command
+        # before running it. Public evidence may name its fixed category, never
+        # relay private Ruff/mypy/pytest output, test names, traceback or paths.
+        source = path.read_text(encoding="utf-8", errors="replace")
+        categories = (
+            (r"^\$ .* -m ruff check \.$", "RUFF"),
+            (r"^\$ .* -m mypy app$", "MYPY_APP"),
+            (r"^\$ .* -m mypy tests$", "MYPY_TESTS"),
+            (r"^\$ .* -m pytest$", "PYTEST"),
+            (r"^\$ .* -m app\.runtime\.freeze_evidence$", "FREEZE"),
+        )
+        last = "UNKNOWN"
+        positions = [
+            (match.start(), label)
+            for pattern, label in categories
+            for match in re.finditer(pattern, source, flags=re.MULTILINE)
+        ]
+        if positions:
+            last = max(positions, key=lambda item: item[0])[1]
+        print("QDIP_CORE_QUALITY_FAILED_PHASE=" + last)
     if args.stage == "mongodb-recovery" and status != "PASS" and path.exists():
         # Safe only for the synthetic hard-coded local RR restore verifier.
         # Never release unfiltered backend stderr or payloads into public Actions.
