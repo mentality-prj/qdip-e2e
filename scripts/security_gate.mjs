@@ -2,7 +2,6 @@
 // Public-repository gate controller. Never print or upload private source, prompts or findings.
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
@@ -27,9 +26,9 @@ export function validateInputs({ target, sourceRef, expectedSha }) {
   return TARGETS[target];
 }
 
-export function classify({ agentExit, requiredPresent, schemaValid, sourceClean, findings, ledger }) {
+export function classify({ agentExit, requiredPresent, schemaValid, sourceClean, metadataValid = true, findings, ledger }) {
   // Missing evidence is never interpreted as a clean audit.
-  if (agentExit !== 0 || !requiredPresent || !schemaValid || !sourceClean ||
+  if (agentExit !== 0 || !requiredPresent || !schemaValid || !sourceClean || !metadataValid ||
       !Array.isArray(findings) || !Array.isArray(ledger) || ledger.length === 0) {
     return 'INCOMPLETE';
   }
@@ -113,12 +112,15 @@ function main() {
   const requiredPresent = paths.every(f => fs.existsSync(f) && fs.statSync(f).isFile());
   const findings = readJson(path.join(base, 'findings.json'));
   const ledger = readJson(path.join(base, 'coverage-ledger.json'));
+  const metadata = readJson(path.join(base, 'run-metadata.json'));
+  const metadataValid = metadata?.run_status === 'complete' && Boolean(actualSha) &&
+    JSON.stringify(metadata.source_ref || '').includes(actualSha);
   const schemaValid = requiredPresent &&
     validateWithUpstream(skill, 'validate-findings.cjs', path.join(base, 'findings.json')) &&
     validateWithUpstream(skill, 'validate-coverage-ledger.cjs', path.join(base, 'coverage-ledger.json'));
   const sourceClean = expectedMatches && isSourceClean(source);
   const agentExit = Number(safeEnv('AGENT_EXIT_CODE') || 99);
-  const status = classify({ agentExit, requiredPresent, schemaValid, sourceClean, findings, ledger });
+  const status = classify({ agentExit, requiredPresent, schemaValid, sourceClean, metadataValid, findings, ledger });
   const confirmed = Array.isArray(findings) ? findings.filter(f => f?.verdict === 'confirmed') : [];
   const sanitizedResult = {
     schema_version: 1,
@@ -131,7 +133,7 @@ function main() {
     confirmed_total: confirmed.length,
     confirmed_blocking: confirmed.filter(f => ['high', 'critical'].includes(f?.severity?.overall_severity)).length,
     unresolved: Array.isArray(findings) ? findings.filter(f => f?.verdict === 'needs_validation').length : 0,
-    evidence_complete: requiredPresent && schemaValid && sourceClean && agentExit === 0,
+    evidence_complete: requiredPresent && schemaValid && sourceClean && metadataValid && agentExit === 0,
     timestamp_utc: new Date().toISOString(),
   };
   fs.mkdirSync(sanitized, { recursive: true });
