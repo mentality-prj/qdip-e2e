@@ -1,4 +1,4 @@
-name: Doctor QA1 real roleless authorization E2E
+name: Doctor QA1 roleless real Zitadel gate
 on:
   workflow_dispatch:
 permissions:
@@ -18,35 +18,25 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Syntax and no-credentials static gate
-        run: node --check scripts/doctor_roleless_qa1_live.mjs
-      - name: Fail closed if no exactly one QA1 password secret is bound
+      - name: Verify QA1 TEST1 credentials are correctly bound
         env:
-          SECRET_BOUND_1: ${{ secrets.QDIP_E2E_ZITADEL_QA1_PASSWORD != '' }}
-          SECRET_BOUND_2: ${{ secrets.QA1_PASSWORD != '' }}
-          SECRET_BOUND_3: ${{ secrets.QDIP_QA1_PASSWORD != '' }}
-          SECRET_BOUND_4: ${{ secrets.ZITADEL_QA1_TEST_PASSWORD != '' }}
-          SECRET_BOUND_5: ${{ secrets.QA1_ZITADEL_TEST_PASSWORD != '' }}
-          SECRET_BOUND_6: ${{ secrets.QDIP_E2E_QA1_ZITADEL_PASSWORD != '' }}
-          SECRET_BOUND_7: ${{ secrets.QDIP_E2E_ZITADEL_QA1_USER_PASSWORD != '' }}
-          SECRET_BOUND_8: ${{ secrets.QDIP_E2E_ZITADEL_TEST_PASSWORD_QA1 != '' }}
-          SECRET_BOUND_9: ${{ secrets.QDIP_E2E_ZITADEL_QA1_TEST_PASSWORD != '' }}
-          SECRET_BOUND_10: ${{ secrets.QDIP_E2E_ZITADEL_ROLELESS_PASSWORD != '' }}
+          TEST1_LOGIN: ${{ secrets.QDIP_E2E_ZITADEL_TEST1_LOGIN }}
+          TEST1_PASSWORD_EXISTS: ${{ secrets.QDIP_E2E_ZITADEL_TEST1_PASSWORD != '' }}
         shell: bash
         run: |
           set -euo pipefail
-          count=0
-          for i in $(seq 1 10); do
-            key="SECRET_BOUND_$i"
-            if [ "${!key}" = "true" ]; then
-              count=$((count+1))
-            fi
-          done
-          if [ "$count" -ne 1 ]; then
-            echo "DOCTOR_QA1_SECRET_BINDING=BLOCKED"
+          if [ "${TEST1_LOGIN,,}" != "qa1@qdip.ai" ]; then
+            echo 'DOCTOR_QA1_TEST1_IDENTITY=NOT_MATCHED'
             exit 2
           fi
-          echo "DOCTOR_QA1_SECRET_BINDING=PASS"
+          if [ "$TEST1_PASSWORD_EXISTS" != "true" ]; then
+            echo 'DOCTOR_QA1_TEST1_PASSWORD=NOT_BOUND'
+            exit 2
+          fi
+          echo 'DOCTOR_QA1_TEST1_IDENTITY=PASS'
+          echo 'DOCTOR_QA1_TEST1_PASSWORD=BOUND'
+      - name: Check test syntax
+        run: node --check scripts/doctor_roleless_qa1_live.mjs
       - name: Install isolated Chromium
         run: |
           set -euo pipefail
@@ -56,36 +46,10 @@ jobs:
           npm init -y >/dev/null
           npm install --no-save --ignore-scripts @playwright/test@1.56.1
           npx playwright install --with-deps chromium
-      - name: Real QA1 Zitadel identity and negative Doctor authorization
+      - name: Real QA1 Zitadel login and Doctor role denial
         env:
-          QA1_PASS_1: ${{ secrets.QDIP_E2E_ZITADEL_QA1_PASSWORD }}
-          QA1_PASS_2: ${{ secrets.QA1_PASSWORD }}
-          QA1_PASS_3: ${{ secrets.QDIP_QA1_PASSWORD }}
-          QA1_PASS_4: ${{ secrets.ZITADEL_QA1_TEST_PASSWORD }}
-          QA1_PASS_5: ${{ secrets.QA1_ZITADEL_TEST_PASSWORD }}
-          QA1_PASS_6: ${{ secrets.QDIP_E2E_QA1_ZITADEL_PASSWORD }}
-          QA1_PASS_7: ${{ secrets.QDIP_E2E_ZITADEL_QA1_USER_PASSWORD }}
-          QA1_PASS_8: ${{ secrets.QDIP_E2E_ZITADEL_TEST_PASSWORD_QA1 }}
-          QA1_PASS_9: ${{ secrets.QDIP_E2E_ZITADEL_QA1_TEST_PASSWORD }}
-          QA1_PASS_10: ${{ secrets.QDIP_E2E_ZITADEL_ROLELESS_PASSWORD }}
-        shell: bash
+          QDIP_E2E_ZITADEL_QA1_PASSWORD: ${{ secrets.QDIP_E2E_ZITADEL_TEST1_PASSWORD }}
         run: |
           set -euo pipefail
-          count=0
-          selected=""
-          for i in $(seq 1 10); do
-            key="QA1_PASS_$i"
-            if [ -n "${!key:-}" ]; then
-              count=$((count+1))
-              selected="${!key}"
-            fi
-          done
-          if [ "$count" -ne 1 ]; then
-            echo "DOCTOR_QA1_CREDENTIAL_BINDING=NOT_VERIFIED"
-            exit 2
-          fi
-          echo "DOCTOR_QA1_CREDENTIAL_BINDING=PASS"
-          export QDIP_E2E_ZITADEL_QA1_PASSWORD="$selected"
-          unset selected
           cd /tmp/doctor-qa1-negative
           node doctor_roleless_qa1_live.mjs
