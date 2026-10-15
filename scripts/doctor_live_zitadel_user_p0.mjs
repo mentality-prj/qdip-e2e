@@ -138,11 +138,15 @@ async function main(){
     console.log("DOCTOR_P0_PROPOSE_REPAIR=PASS");
     const hardCase=await evaluate("diagnose",hard);
     const invalidCase=await evaluate("validate",invalid);
-    check(hardCase.diagnosis?.kind==="NO_ASSUMPTIONS"
+    check(hardCase.diagnosis?.kind==="VERIFIED_SUFFICIENT_HARD_CONSTRAINT_CORE"
+      &&hardCase.diagnosis?.verification_status==="INFEASIBLE"
+      &&hardCase.diagnosis?.minimal===false
+      &&hardCase.diagnosis?.original_model_mutated===false
+      &&hardCase.diagnosis?.hard_constraints?.length===2
       &&invalidCase.solver_status==="MODEL_INVALID"
       &&invalidCase.model_inspection===null,
       "DOCTOR_HARD_INVALID_INCORRECT");
-    console.log("DOCTOR_P0_HARD_INVALID=PASS");
+    console.log("DOCTOR_P1_HARD_CORE_AND_INVALID=PASS");
 
     const csrf=await context.request.post(SITE+"/api/doctor",{
       headers:{Origin:"https://other.invalid","Content-Type":"application/json"},
