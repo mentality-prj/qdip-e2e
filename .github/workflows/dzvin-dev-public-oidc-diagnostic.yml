@@ -1,0 +1,43 @@
+name: Dzvin dev public unauthenticated OIDC diagnostics
+on:
+  push:
+    branches: [test/dzvin-dev-public-oidc-diagnostic-20261015]
+    paths:
+      - .github/workflows/dzvin-dev-public-oidc-diagnostic.yml
+permissions:
+  contents: read
+jobs:
+  public-diagnostic:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - name: Inspect public browser entry without any secrets
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from urllib.request import Request, urlopen
+          from urllib.error import HTTPError
+          from urllib.parse import urlsplit
+          import re
+          url = 'https://mentality-web-git-dev-taras-gezs-projects.vercel.app/en/auth'
+          try:
+            response = urlopen(Request(url, headers={'User-Agent': 'Mozilla/5.0'}), timeout=20)
+          except HTTPError as error:
+            response = error
+          status = response.status
+          destination = urlsplit(response.geturl()).hostname
+          body = response.read(200000).decode('utf-8', errors='replace').lower()
+          title_match = re.search(r'<title[^>]*>(.*?)</title>', body, re.S)
+          title = re.sub(r'\s+', ' ', title_match.group(1)).strip() if title_match else ''
+          vercel_protected = any(key in body or key in title for key in [
+              'vercel authentication', 'authentication required', 'log in to vercel',
+              'you must be logged in', 'deployment protection', 'authenticate to continue',
+              'vercel.com/sso', 'vercel.com/login',
+          ]) or ('vercel.com' in (destination or '') and destination != urlsplit(url).hostname)
+          dzvin_html = 'dzvin.co' in title or 'mental state analytics' in title
+          print('DZVIN_DEV_ANONYMOUS_HTTP=' + str(status))
+          print('DZVIN_DEV_DESTINATION_HOST=' + str(destination))
+          print('DZVIN_DEV_VERCEL_AUTH_BARRIER=' + ('YES' if vercel_protected else 'NO'))
+          print('DZVIN_DEV_APP_HTML=' + ('YES' if dzvin_html else 'NO'))
+          print('DZVIN_DEV_TITLE_CATEGORY=' + ('vercel' if vercel_protected else 'dzvin' if dzvin_html else 'other'))
+          PY
