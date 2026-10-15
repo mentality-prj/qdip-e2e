@@ -93,6 +93,7 @@ jobs:
           test -f "$SKILL_DIR/validate-findings.cjs"
           test -f "$SKILL_DIR/validate-coverage-ledger.cjs"
           test -z "$(git -C target status --porcelain)"
+          echo "CHECKED_OUT_SHA=$(git -C target rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - name: Install GitHub Copilot CLI (no source dependencies)
         run: npm install --global @github/copilot
@@ -106,7 +107,7 @@ jobs:
           set -uo pipefail
           # Never stream private source traces, findings or full prompts to public logs.
           # No shell tools for the agent: no target build, tests, arbitrary code or outbound curl.
-          prompt="Use /security-audit from $SKILL_DIR in FULL SIX-PHASE AUDIT MODE (not guidance mode) on this repository at the checked-out immutable HEAD. Write run-metadata.json, architecture.md, coverage-ledger.json, findings.json, REPORT.md, FINDINGS-DETAIL.md and NEEDS-VALIDATION.md to $GATE_REPORT_DIR outside the source worktree. Delegate independent hunter/validator/reviewer agents and record coverage honestly. The agent MUST NOT run target-controlled code, shell commands, tests, or fetch external URLs; there is no approved OS sandbox for untrusted execution. Any unvalidated dynamic exploit must remain needs_validation. Do not alter this repository, access external services, post issues, or print sensitive material. This is a source-only audit; run no commands. Follow all six phases and produce machine-valid Cloudflare artifacts. Validation scripts will be run externally after your session."
+          prompt="Use /security-audit from $SKILL_DIR in FULL SIX-PHASE AUDIT MODE (not guidance mode) on this repository at the checked-out immutable HEAD ($CHECKED_OUT_SHA). Include exactly this SHA in run-metadata.json source_ref and set run_status=complete only after final verification and reports. Write run-metadata.json, architecture.md, coverage-ledger.json, findings.json, REPORT.md, FINDINGS-DETAIL.md and NEEDS-VALIDATION.md to $GATE_REPORT_DIR outside the source worktree. Delegate independent hunter/validator/reviewer agents and record coverage honestly. The agent MUST NOT run target-controlled code, shell commands, tests, or fetch external URLs; there is no approved OS sandbox for untrusted execution. Any unvalidated dynamic exploit must remain needs_validation. Do not alter this repository, access external services, post issues, or print sensitive material. This is a source-only audit; run no commands. Follow all six phases and produce machine-valid Cloudflare artifacts. Validation scripts will be run externally after your session."
           cd target
           copilot -p "$prompt" -s \
             --max-ai-credits 30 \
