@@ -1,0 +1,45 @@
+name: Dzvin dev real QA1 QA2 company gate
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: dzvin-dev-qa1-qa2-company-gate
+  cancel-in-progress: false
+jobs:
+  qa-company-isolation:
+    if: github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      CI: 'true'
+      DZVIN_DEV_ORIGIN: https://mentality-web-git-dev-taras-gezs-projects.vercel.app
+      QDIP_E2E_ZITADEL_TEST1_LOGIN: ${{ secrets.QDIP_E2E_ZITADEL_TEST1_LOGIN }}
+      QDIP_E2E_ZITADEL_TEST1_PASSWORD: ${{ secrets.QDIP_E2E_ZITADEL_TEST1_PASSWORD }}
+      QDIP_E2E_ZITADEL_TEST2_LOGIN: ${{ secrets.QDIP_E2E_ZITADEL_TEST2_LOGIN }}
+      QDIP_E2E_ZITADEL_TEST2_PASSWORD: ${{ secrets.QDIP_E2E_ZITADEL_TEST2_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check read-only QA test source
+        run: node --check scripts/dzvin_two_qa_company_gate.mjs
+      - name: Install isolated Playwright Chromium
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/dzvin-qa-gate
+          cp scripts/dzvin_two_qa_company_gate.mjs /tmp/dzvin-qa-gate/
+          cd /tmp/dzvin-qa-gate
+          npm init -y >/dev/null
+          npm install --no-save --ignore-scripts @playwright/test@1.57.0
+          npx playwright install --with-deps chromium
+      - name: Run two real Zitadel logins and company isolation without retries
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /tmp/dzvin-qa-gate
+          node dzvin_two_qa_company_gate.mjs
