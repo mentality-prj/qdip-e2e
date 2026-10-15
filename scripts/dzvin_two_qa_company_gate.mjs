@@ -1,0 +1,220 @@
+/**
+ * Manual-only two-account Dzvin dev authorization qualification.
+ * Uses existing qdip-e2e TEST1/TEST2 GitHub secrets. Never prints credentials,
+ * auth codes, cookies, tokens, subject IDs or company IDs.
+ * No production target, no MongoDB writes, no role changes and no retries.
+ */
+import { chromium } from "@playwright/test";
+
+const SITE = process.env.DZVIN_DEV_ORIGIN;
+const users = [
+  {
+    name: "QA1",
+    email: process.env.QDIP_E2E_ZITADEL_TEST1_LOGIN,
+    password: process.env.QDIP_E2E_ZITADEL_TEST1_PASSWORD,
+  },
+  {
+    name: "QA2",
+    email: process.env.QDIP_E2E_ZITADEL_TEST2_LOGIN,
+    password: process.env.QDIP_E2E_ZITADEL_TEST2_PASSWORD,
+  },
+];
+
+function requireStage(value, code) {
+  if (!value) throw new Error(code);
+}
+
+function assertPreflight() {
+  requireStage(
+    SITE === "https://mentality-web-git-dev-taras-gezs-projects.vercel.app",
+    "DZVIN_DEV_ORIGIN_UNEXPECTED",
+  );
+  const emails = new Set();
+  for (const user of users) {
+    requireStage(
+      /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(user.email || ""),
+      user.name + "_LOGIN_UNBOUND",
+    );
+    requireStage(
+      typeof user.password === "string" && user.password.length > 0,
+      user.name + "_PASSWORD_UNBOUND",
+    );
+    emails.add(user.email.toLowerCase());
+  }
+  requireStage(users[0].email.toLowerCase() === "qa1@qdip.ai", "QA1_ACCOUNT_MISMATCH");
+  requireStage(users[1].email.toLowerCase() === "qa2@qdip.ai", "QA2_ACCOUNT_MISMATCH");
+  requireStage(emails.size === 2, "QA_USERS_NOT_DISTINCT");
+}
+
+async function findField(page, selectors, ms = 12000) {
+  const deadline = Date.now() + ms;
+  while (Date.now() < deadline) {
+    for (const selector of selectors) {
+      const field = page.locator(selector).first();
+      if (await field.isVisible().catch(() => false)) return field;
+    }
+    await page.waitForTimeout(250);
+  }
+  return null;
+}
+
+async function loginAndResolveCompany(browser, user) {
+  const context = await browser.newContext({
+    ignoreHTTPSErrors: false,
+    serviceWorkers: "block",
+    acceptDownloads: false,
+  });
+  try {
+    const page = await context.newPage();
+    page.setDefaultTimeout(12000);
+    await page.goto(SITE + "/en/auth", {
+      waitUntil: "domcontentloaded",
+      timeout: 30000,
+    });
+    const username = await findField(page, [
+      'input[autocomplete="username"]',
+      'input[name="loginName"]',
+      'input[name="loginname"]',
+      'input[name="username"]',
+      'input[name="email"]',
+      'input[type="email"]',
+      'input[type="text"]',
+    ]);
+    requireStage(username, user.name + "_ZITADEL_USERNAME_FIELD_MISSING");
+    await username.fill(user.email);
+    let password = await findField(
+      page,
+      ['input[autocomplete="current-password"]', 'input[type="password"]'],
+      1200,
+    );
+    if (!password) {
+      await username.press("Enter");
+      password = await findField(page, [
+        'input[autocomplete="current-password"]',
+        'input[type="password"]',
+      ]);
+    }
+    requireStage(password, user.name + "_ZITADEL_PASSWORD_FIELD_MISSING");
+    await password.fill(user.password);
+    await password.press("Enter");
+
+    let session = null;
+    for (let attempt = 0; attempt < 22; attempt++) {
+      await page.waitForTimeout(1300);
+      const response = await context.request.get(SITE + "/api/auth/session", {
+        maxRedirects: 0,
+        timeout: 9000,
+      }).catch(() => null);
+      if (response?.status() === 200) {
+        session = await response.json().catch(() => null);
+        if (session?.id) break;
+      }
+    }
+    requireStage(session?.id, user.name + "_DZVIN_SESSION_NOT_ESTABLISHED");
+    requireStage(
+      session.email?.toLowerCase() === user.email.toLowerCase(),
+      user.name + "_SESSION_IDENTITY_MISMATCH",
+    );
+    const cookies = await context.cookies(SITE);
+    requireStage(
+      cookies.some((cookie) => cookie.name === "auth-tokens" && cookie.httpOnly),
+      user.name + "_HTTPONLY_AUTH_COOKIE_MISSING",
+    );
+    console.log(user.name + "_REAL_ZITADEL_DZVIN_SESSION=PASS");
+
+    const response = await context.request.get(SITE + "/api/backend/companies/mine", {
+      maxRedirects: 0,
+    });
+    requireStage(response.status() === 200, user.name + "_COMPANY_LIST_UNAVAILABLE");
+    const companies = await response.json();
+    requireStage(
+      Array.isArray(companies) && companies.length === 1,
+      user.name + "_SINGLE_DISPOSABLE_COMPANY_FIXTURE_MISSING",
+    );
+    const id = companies[0].id;
+    requireStage(/^[a-f0-9]{24}$/i.test(id || ""), user.name + "_COMPANY_ID_INVALID");
+    console.log(user.name + "_SINGLE_COMPANY_MEMBERSHIP=PASS");
+    return { context, subject: session.id, companyId: id };
+  } catch (error) {
+    await context.close();
+    throw error;
+  }
+}
+
+async function denyForeignAccess(actor, companyId, label) {
+  const own = await actor.context.request.get(
+    SITE + "/api/backend/companies/" + actor.companyId,
+    { maxRedirects: 0 },
+  );
+  requireStage(own.status() === 200, label + "_OWN_COMPANY_NOT_READABLE");
+  for (const suffix of [
+    "",
+    "/groups",
+    "/employees",
+    "/invites",
+    "/access-scopes",
+    "/salary-grades",
+    "/analytics/mood",
+  ]) {
+    const denied = await actor.context.request.get(
+      SITE + "/api/backend/companies/" + companyId + suffix,
+      { maxRedirects: 0 },
+    );
+    requireStage(
+      [403, 404].includes(denied.status()),
+      label + "_FOREIGN_COMPANY_READ_NOT_DENIED",
+    );
+    requireStage(
+      (denied.headers()["cache-control"] || "").includes("no-store"),
+      label + "_DENIAL_CACHE_CONTROL_MISSING",
+    );
+  }
+  const forged = await actor.context.request.get(
+    SITE + "/api/backend/companies/" + companyId + "/groups",
+    {
+      maxRedirects: 0,
+      headers: { "x-company-id": companyId, "x-company-role": "superuser" },
+    },
+  );
+  requireStage(
+    [403, 404].includes(forged.status()),
+    label + "_FORGED_COMPANY_HEADER_NOT_DENIED",
+  );
+  const selector = await actor.context.request.post(SITE + "/api/company-context", {
+    maxRedirects: 0,
+    headers: { Origin: SITE },
+    form: { companyId, locale: "en" },
+  });
+  requireStage(selector.status() === 403, label + "_FOREIGN_COMPANY_SWITCH_NOT_DENIED");
+  requireStage(
+    !selector.headers()["set-cookie"],
+    label + "_FOREIGN_COMPANY_SWITCH_SET_COOKIE",
+  );
+  console.log(label + "_BIDIRECTIONAL_COMPANY_ISOLATION=PASS");
+}
+
+async function main() {
+  assertPreflight();
+  console.log("DZVIN_QA_PAIR_SECRET_BINDING=PASS");
+  const browser = await chromium.launch({ headless: true });
+  let a, b;
+  try {
+    a = await loginAndResolveCompany(browser, users[0]);
+    b = await loginAndResolveCompany(browser, users[1]);
+    requireStage(a.subject !== b.subject, "DZVIN_QA_SUBJECTS_NOT_DISTINCT");
+    requireStage(a.companyId !== b.companyId, "DZVIN_QA_COMPANIES_NOT_DISTINCT");
+    await denyForeignAccess(a, b.companyId, "QA1");
+    await denyForeignAccess(b, a.companyId, "QA2");
+    console.log("DZVIN_REAL_QA1_QA2_COMPANY_GATE=PASS");
+  } finally {
+    await Promise.all([a?.context.close(), b?.context.close()]);
+    await browser.close();
+  }
+}
+
+main().catch((error) => {
+  const reason = error instanceof Error && /^[A-Z0-9_]{5,100}$/.test(error.message)
+    ? error.message : "REDACTED_BROWSER_OR_NETWORK_ERROR";
+  console.error("DZVIN_REAL_QA1_QA2_COMPANY_GATE=FAIL:" + reason);
+  process.exitCode = 1;
+});
