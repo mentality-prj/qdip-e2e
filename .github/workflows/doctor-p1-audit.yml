@@ -1,0 +1,24 @@
+name: Doctor P1 security audit external smoke (manual)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: doctor-p1-security-audit-smoke
+  cancel-in-progress: false
+jobs:
+  audit:
+    if: github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: External Doctor OAuth and anonymous API negative checks
+        run: |
+          node --check scripts/doctor_p1_audit_stage.mjs
+          node scripts/doctor_p1_audit_stage.mjs
