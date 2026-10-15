@@ -4,6 +4,7 @@ on:
     branches: [test/dzvin-dev-public-oidc-diagnostic-20261015]
     paths:
       - .github/workflows/dzvin-dev-public-oidc-diagnostic.yml
+      - scripts/dzvin_public_login_preflight.mjs
 permissions:
   contents: read
 jobs:
