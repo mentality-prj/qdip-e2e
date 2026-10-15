@@ -159,7 +159,7 @@ async function main(){
     check(blocked.status()===401,"DOCTOR_LOGOUT_SOLVER_NOT_BLOCKED");
     console.log("DOCTOR_P0_CSRF_LOGOUT=PASS");
     console.log("DOCTOR_REAL_ZITADEL_BROWSER_SOLVER_E2E=PASS");
-    console.log("DOCTOR_WRONG_ORG_ROLELESS_IDENTITIES=NOT_TESTED");
+    console.log("DOCTOR_ROLELESS_IDENTITY=NOT_TESTED");
   }finally{
     await anon.dispose();await context.close();await browser.close();
   }
