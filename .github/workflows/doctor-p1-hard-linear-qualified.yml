@@ -1,0 +1,53 @@
+name: Doctor P1 native hard-core independent qualification
+on:
+  push:
+    branches: [test/doctor-p1-hard-linear-qualified]
+    paths:
+      - .github/workflows/doctor-p1-hard-linear-qualified.yml
+permissions:
+  contents: read
+jobs:
+  verify-pinned-private-doctor:
+    if: github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: qdip-ai/qdip-model-doctor
+          ref: f83f7e17b292d782937639be881dc5f1228a8d17
+          token: ${{ secrets.QDIP_READ_TOKEN }}
+          persist-credentials: false
+          path: doctor
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned Doctor and isolated test dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -q -e './doctor[remote]' pytest
+      - name: Validate source, proof, runtime and IPC security
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd doctor
+          python -m compileall -q src tests
+          python -m pytest -q tests/test_hard_conflicts.py tests/test_runtime.py tests/test_worker_control.py
+      - name: Browser report regression and i18n tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd doctor
+          node --test tests/js/*.cjs
+      - name: Native production build qualification
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd doctor
+          python -m qdip_model_doctor.build_selftest
+          echo 'DOCTOR_P1_HARD_LINEAR_PROOF=PASS'
+          echo 'DOCTOR_P1_PRODUCTION_DEPLOY=NOT_TESTED'
