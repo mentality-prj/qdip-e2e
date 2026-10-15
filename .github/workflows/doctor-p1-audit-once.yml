@@ -20,4 +20,6 @@ jobs:
           node-version: '22'
       - run: node --check scripts/doctor_p1_audit_stage.mjs
       - name: Audit stage HTTP adversarial checks
+        env:
+          DOCTOR_P1_AUDIT_URL: https://doctor-p1-audit-stage-20261015-production.up.railway.app
         run: node scripts/doctor_p1_audit_stage.mjs
