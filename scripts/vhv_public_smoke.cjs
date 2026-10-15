@@ -76,33 +76,41 @@ async function check(browser, variant) {
     const submit=await button.evaluate(el=>el.closest('form')?.getAttribute('action')!==undefined);
     assert.ok(submit,'Sign-in must remain inside a real form; test must not submit it');
 
-    const scene=page.locator('.login-scene');
-    await scene.waitFor({state:'visible',timeout:10000});
-    const styles=await scene.evaluate(el=>{
-      const shell=getComputedStyle(el);
-      const img=getComputedStyle(el.querySelector('.login-scene__image'));
-      const layout=getComputedStyle(el.parentElement);
-      const copy=getComputedStyle(el.parentElement.querySelector('.login-details'));
-      const sceneBounds=el.getBoundingClientRect();
-      const headingBounds=el.parentElement.querySelector('h1').getBoundingClientRect();
-      const ctaBounds=el.parentElement.querySelector('.login-submit').getBoundingClientRect();
-      return {image:img.backgroundImage,animation:img.animationName,
-        position:shell.position,grid:layout.gridTemplateAreas,align:layout.alignItems,
-        sceneTop:sceneBounds.top,headingTop:headingBounds.top,
-        ctaTop:ctaBounds.top,copyZ:copy.zIndex,sceneZ:shell.zIndex};
-    });
     const assetName=width<=850?'vhv-hero-mobile.webp':'vhv-hero-desktop.webp';
-    assert.ok(styles.image.includes(assetName),'Expected viewport-specific hero '+assetName);
-    assert.equal(styles.animation,'none','Reduced motion must disable decorative movement');
     if(width<=850) {
-      assert.equal(styles.position,'absolute','Mobile image must be a background, not a block');
-      assert.equal(styles.grid,'"details"','Mobile must not allocate a second artwork grid row');
-      assert.equal(styles.align,'start','Mobile copy must be top aligned, not centered over the calendar');
-      assert.ok(styles.headingTop-brandBounds.headerBottom<55,
-        'Hero heading must start directly after header instead of floating into the artwork');
-      assert.ok(styles.sceneTop<=styles.headingTop,'Background must start behind the heading');
-      assert.ok(styles.sceneTop<styles.ctaTop,'Background must not appear only below CTA');
-      assert.ok(Number(styles.copyZ)>Number(styles.sceneZ),'Sign-in content must layer above the artwork');
+      const gallery=page.locator('.login-portrait-stage');
+      await gallery.waitFor({state:'visible',timeout:10000});
+      const geo=await page.evaluate(()=>{
+        const rect=(sel)=>document.querySelector(sel)?.getBoundingClientRect().toJSON();
+        const art=document.querySelector('.login-portrait-stage');
+        return {
+          consent:rect('.login-consent'),gallery:rect('.login-portrait-stage'),
+          form:rect('.login-details form'),copy:rect('.login-description'),
+          benefits:rect('.login-benefits'),
+          image:getComputedStyle(art).backgroundImage,
+          sceneDisplay:getComputedStyle(document.querySelector('.login-scene')).display,
+          layout:getComputedStyle(document.querySelector('.login-layout')).gridTemplateAreas,
+        };
+      });
+      assert.equal(geo.sceneDisplay,'none','Old full-page hero must not cover live mobile text');
+      assert.equal(geo.layout,'"details"','Mobile must use one text column');
+      assert.ok(geo.image.includes('vhv-hero-mobile.webp'),'Dedicated gallery must own portrait background');
+      assert.ok(geo.copy && geo.benefits && geo.consent && geo.gallery && geo.form,'Mobile geometry incomplete');
+      assert.ok(geo.copy.bottom<=geo.gallery.top+2 && geo.benefits.bottom<=geo.gallery.top+2 &&
+        geo.consent.bottom<=geo.gallery.top+2,'Copy must not overlap active image');
+      assert.ok(geo.gallery.bottom<=geo.form.top+2,'Sign-in must follow image rather than cover calendar');
+      assert.ok(geo.gallery.height>=230,'Calendar gallery must remain visible, not collapse');
+      assert.ok(geo.gallery.width>=width*.85,'Gallery must extend across mobile viewport');
+      assert.ok(geo.gallery.top>=brandBounds.headerBottom,'Gallery must not obscure wordmark');
+    } else {
+      const scene=page.locator('.login-scene');
+      await scene.waitFor({state:'visible',timeout:10000});
+      const styles=await scene.evaluate(el=>{
+        const img=getComputedStyle(el.querySelector('.login-scene__image'));
+        return {image:img.backgroundImage,animation:img.animationName};
+      });
+      assert.ok(styles.image.includes(assetName),'Desktop hero missing approved artwork');
+      assert.equal(styles.animation,'none','Reduced motion must disable decorative movement');
     }
     const artResponse=await page.request.get(url+'/'+assetName,{timeout:15000});
     assert.equal(artResponse.status(),200,'Approved WebP must load');
@@ -133,8 +141,7 @@ async function check(browser, variant) {
     assert.ok(bounds.document<=bounds.viewport+2,'Unexpected horizontal overflow');
     assert.ok(bounds.cta && bounds.cta.width>120 && bounds.cta.height>=44,'CTA too small or missing');
     assert.ok(bounds.heading && bounds.heading.y < bounds.cta.y,'Heading should precede CTA');
-    if(width<=430) assert.ok(bounds.cta.y+bounds.cta.height < height+120,
-      'Mobile sign-in must not be displaced far below first screen');
+    // Content and gallery may scroll; real CTA is below the artwork and remains accessible.
     assert.deepEqual(errors,[],'Uncaught JavaScript page errors');
 
     await page.screenshot({path:path.join(out,'vhv-'+lang+'-'+width+'.png'),fullPage:true,
