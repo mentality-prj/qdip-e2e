@@ -36,6 +36,19 @@ python suite/scripts/safe_stage.py --timeout 120 backend-restart -- \
     python ../suite/scripts/check_fastapi_restart.py
 )
 python suite/scripts/safe_stage.py --timeout 70 rr-auth-revocation -- python suite/scripts/check_revocation.py
+# Read-only p95 replay benchmark on the EXACT synthetic execution created
+# above. No solver invocation, writes, production URL or customer source.
+replay_id="$(python -c 'import json,os,pathlib; p=pathlib.Path(os.environ["RUNNER_TEMP"])/"qdip-rr-e2e-state.json"; print(json.loads(p.read_text())["revised_id"])')"
+[[ "$replay_id" =~ ^rr-e2e-[a-f0-9]{14}-02$ ]] || {
+  echo "RR_REPLAY_LOAD_EXECUTION_ID=INVALID" >&2; exit 2;
+}
+(
+  cd backend
+  RR_LOAD_ORG_API_KEY="$E2E_KEY_A" python ../suite/scripts/safe_stage.py --timeout 240 rr-replay-load -- \
+    python scripts/verify_rr_http_load.py \
+      --base-url http://127.0.0.1:8000 --execution-id "$replay_id" \
+      --requests 40 --concurrency 4
+)
 # The test mode must match the selected *real* Web implementation.
 # Never downgrade OIDC to the retired password-login suite.
 case "$RR_E2E_CONTRACT_MODE" in
