@@ -41,6 +41,7 @@ jobs:
         run: |
           node --experimental-strip-types --check scripts/rr_plugin_browser.spec.ts
           node --check scripts/doctor_p1_repair_live_user.mjs
+          node --check scripts/doctor_roleless_qa1_live.mjs
           node --experimental-strip-types --check scripts/rr_oidc_session_browser.spec.ts
           node --experimental-strip-types --check scripts/rr_real_playwright.config.ts
           node --check scripts/mock_zitadel.mjs

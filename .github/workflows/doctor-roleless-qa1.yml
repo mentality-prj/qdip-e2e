@@ -1,0 +1,55 @@
+name: Doctor QA1 roleless real Zitadel gate
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: doctor-qa1-negative-user
+  cancel-in-progress: false
+jobs:
+  roleless-user:
+    if: github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify QA1 TEST1 credentials are correctly bound
+        env:
+          TEST1_LOGIN: ${{ secrets.QDIP_E2E_ZITADEL_TEST1_LOGIN }}
+          TEST1_PASSWORD_EXISTS: ${{ secrets.QDIP_E2E_ZITADEL_TEST1_PASSWORD != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${TEST1_LOGIN,,}" != "qa1@qdip.ai" ]; then
+            echo 'DOCTOR_QA1_TEST1_IDENTITY=NOT_MATCHED'
+            exit 2
+          fi
+          if [ "$TEST1_PASSWORD_EXISTS" != "true" ]; then
+            echo 'DOCTOR_QA1_TEST1_PASSWORD=NOT_BOUND'
+            exit 2
+          fi
+          echo 'DOCTOR_QA1_TEST1_IDENTITY=PASS'
+          echo 'DOCTOR_QA1_TEST1_PASSWORD=BOUND'
+      - name: Check test syntax
+        run: node --check scripts/doctor_roleless_qa1_live.mjs
+      - name: Install isolated Chromium
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/doctor-qa1-negative
+          cp scripts/doctor_roleless_qa1_live.mjs /tmp/doctor-qa1-negative/
+          cd /tmp/doctor-qa1-negative
+          npm init -y >/dev/null
+          npm install --no-save --ignore-scripts @playwright/test@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Real QA1 Zitadel login and Doctor role denial
+        env:
+          QDIP_E2E_ZITADEL_QA1_PASSWORD: ${{ secrets.QDIP_E2E_ZITADEL_TEST1_PASSWORD }}
+        run: |
+          set -euo pipefail
+          cd /tmp/doctor-qa1-negative
+          node doctor_roleless_qa1_live.mjs
