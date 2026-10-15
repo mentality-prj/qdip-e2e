@@ -56,5 +56,5 @@ jobs:
       - name: Preserve negative real-identity gates
         if: success()
         run: |
-          echo 'DOCTOR_REAL_WRONG_ORG_ROLELESS=NOT_TESTED'
+          echo 'DOCTOR_REAL_ROLELESS_IDENTITY=NOT_TESTED'
           echo 'DOCTOR_MOBILE_ACCESSIBILITY=NOT_TESTED'
