@@ -132,18 +132,18 @@ def main() -> int:
             lines = source.splitlines()
             for i, line in enumerate(lines):
                 compact = re.match(
-                    r"^([a-zA-Z0-9_./-]+\\.py):\\d+:\\d+:\\s+([A-Z][0-9]{3})\\b",
+                    r"^([a-zA-Z0-9_./-]+\.py):\d+:\d+:\s+([A-Z][0-9]{3})\b",
                     line,
                 )
                 if compact:
                     index = by_path.get(compact.group(1).removeprefix("./"))
                     if index is not None:
                         findings.add((index, compact.group(2)))
-                code = re.match(r"^([A-Z][0-9]{3})\\b", line)
+                code = re.match(r"^([A-Z][0-9]{3})\b", line)
                 if code:
                     for location in lines[i + 1 : i + 4]:
                         match = re.search(
-                            r"--?>\\s+([a-zA-Z0-9_./-]+\\.py):\\d+:\\d+",
+                            r"--?>\s+([a-zA-Z0-9_./-]+\.py):\d+:\d+",
                             location,
                         )
                         if match:
