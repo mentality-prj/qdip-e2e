@@ -1,8 +1,5 @@
 name: Doctor QA1 roleless real Zitadel gate
 on:
-  push:
-    branches: [test/doctor-roleless-qa1-20261015]
-    paths: [.github/workflows/doctor-roleless-qa1.yml]
   workflow_dispatch:
 permissions:
   contents: read
