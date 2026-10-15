@@ -19,7 +19,7 @@ ALLOWED = {
     "observatory-install", "observatory-lint", "observatory-typecheck",
     "observatory-unit", "observatory-build", "browser-install", "browser-e2e",
     "sdk-install", "sdk-e2e", "sdk-negative", "rr-auth-revocation", "test-report",
-    "rr-actor-unit", "rr-actor-ruff", "core-quality", "observatory-format",
+    "rr-actor-unit", "rr-actor-ruff", "core-quality", "observatory-format", "rr-replay-load",
 }
 
 def main() -> int:
@@ -93,6 +93,32 @@ def main() -> int:
             print("RR_DISPOSABLE_RPO_LOST_RECORDS=0")
             print("RR_DISPOSABLE_HMAC_ARCHIVE_INTEGRITY=PASS")
             print("QDIP_RECOVERY_METRICS=PASS")
+    if args.stage == "rr-replay-load" and status == "PASS":
+        # Backend raw output remains local. Only bounded synthetic replay
+        # latency and successful read count may leave this runner.
+        source = path.read_text(encoding="utf-8", errors="replace")
+        p95 = re.findall(
+            r"^RR_LOAD_P95_MS=([0-9]{1,8}\\.[0-9]{2})$",
+            source,
+            flags=re.MULTILINE,
+        )
+        accepted = (
+            len(p95) == 1
+            and source.count("RR_LOAD_REQUESTS=40 CONCURRENCY=4") == 1
+            and source.count("RR_LOAD_NON_200=0") == 1
+            and source.count(
+                "RR_LOAD_RESULT=MEASURED (SLO acceptance must be decided separately)"
+            ) == 1
+        )
+        if not accepted:
+            status = "FAIL"
+            print("RR_REPLAY_LATENCY_EVIDENCE=FAIL")
+        else:
+            print("RR_SYNTHETIC_REPLAY_REQUESTS=40")
+            print("RR_SYNTHETIC_REPLAY_CONCURRENCY=4")
+            print("RR_SYNTHETIC_REPLAY_NON_200=0")
+            print("RR_SYNTHETIC_REPLAY_P95_MS=" + p95[0])
+            print("RR_REPLAY_LATENCY_EVIDENCE=MEASURED_NOT_SLO")
     # Separate sanitized phase ledger for final TEST_FAIL vs INFRA_FAIL status.
     with (Path(temp) / "qdip-stage-results.jsonl").open("a", encoding="utf-8") as out:
         out.write(json.dumps({"stage": args.stage, "status": status}) + chr(10))
