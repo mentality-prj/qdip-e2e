@@ -64,6 +64,35 @@ def main() -> int:
                 Path(args.output).write_bytes(path.read_bytes())
         except OSError:
             status = "INFRA_FAIL"
+    if args.stage == "mongodb-recovery" and status == "PASS":
+        # This specific runner restores only an invented database on a loopback
+        # native Mongo replica. Publish bounded numbers/statuses, never the
+        # private backup, signing keys, application stdout or stack traces.
+        source = path.read_text(encoding="utf-8", errors="replace")
+        rto_values = re.findall(
+            r"^RR_NATIVE_DISPOSABLE_RESTORE_RTO_MS=([0-9]{1,9})$",
+            source,
+            flags=re.MULTILINE,
+        )
+        accepted = (
+            len(rto_values) == 1
+            and source.count(
+                "RR_NATIVE_DISPOSABLE_RPO_LOST_RECORDS=0 "
+                "(fixed synthetic five-collection fixture only)"
+            ) == 1
+            and "RR_RECOVERY_ECONOMIC_HMAC_TAMPER=PASS" in source
+            and "RR_NATIVE_REAL_BACKUP_RESTORE=PASS " in source
+        )
+        if not accepted:
+            # No silent scope-limited PASS if RTO/RPO or HMAC drill metrics
+            # disappear, become ambiguous, or are not independently verified.
+            status = "FAIL"
+            print("QDIP_RECOVERY_METRICS=FAIL")
+        else:
+            print("RR_DISPOSABLE_RESTORE_RTO_MS=" + rto_values[0])
+            print("RR_DISPOSABLE_RPO_LOST_RECORDS=0")
+            print("RR_DISPOSABLE_HMAC_ARCHIVE_INTEGRITY=PASS")
+            print("QDIP_RECOVERY_METRICS=PASS")
     # Separate sanitized phase ledger for final TEST_FAIL vs INFRA_FAIL status.
     with (Path(temp) / "qdip-stage-results.jsonl").open("a", encoding="utf-8") as out:
         out.write(json.dumps({"stage": args.stage, "status": status}) + chr(10))
