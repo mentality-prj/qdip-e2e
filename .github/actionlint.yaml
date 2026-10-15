@@ -1,7 +1,0 @@
-# GitHub added copilot-requests for Copilot CLI Actions in July 2026.
-# actionlint 1.7.x does not yet include this permission in its static list.
-# Scope the suppression narrowly; all other workflow errors remain blocking.
-paths:
-  .github/workflows/security-gate.yml:
-    ignore:
-      - 'unknown permission scope "copilot-requests"'
