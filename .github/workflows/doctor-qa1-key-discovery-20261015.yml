@@ -1,0 +1,36 @@
+name: Doctor QA1 exact secret-key discovery
+on:
+  push:
+    branches: [test/doctor-roleless-qa1-20261015]
+    paths:
+      - .github/workflows/doctor-qa1-key-discovery-20261015.yml
+permissions:
+  contents: read
+jobs:
+  key-names:
+    if: github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    steps:
+      - name: List only matching credential key names; never secret values
+        env:
+          SECRET_CONTEXT: ${{ toJSON(secrets) }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, re
+          value = os.environ.pop("SECRET_CONTEXT")
+          # Never print the JSON, values, or exception text.
+          try:
+              names = json.loads(value).keys()
+          except Exception:
+              print("QA1_SECRET_DISCOVERY=FAILED")
+              raise SystemExit(1)
+          matching = sorted(name for name in names if re.search(
+              r"QA1|ZITADEL|ROLELESS|ROLE.LESS|NO_ROLE|E2E", name, re.I))
+          for name in matching:
+              if re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,100}", name):
+                  print("QA1_RELATED_SECRET_KEY=" + name)
+          print("QA1_SECRET_DISCOVERY=PASS")
+          print("QA1_SECRET_VALUES=NEVER_OUTPUT")
+          PY
