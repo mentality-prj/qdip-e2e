@@ -117,6 +117,46 @@ def main() -> int:
         if positions:
             last = max(positions, key=lambda item: item[0])[1]
         print("QDIP_CORE_QUALITY_FAILED_PHASE=" + last)
+        if last == "RUFF":
+            # An ordinal over the ephemeral private checkout lets the owner's
+            # authorized GitHub reader resolve affected files out of band.
+            # Never emit private paths, source lines, content or raw errors.
+            candidates = sorted(
+                entry.as_posix()
+                for entry in Path(".").rglob("*.py")
+                if entry.is_file()
+                and not any(part.startswith(".") for part in entry.parts)
+            )
+            by_path = {name.removeprefix("./"): i + 1 for i, name in enumerate(candidates)}
+            print("QDIP_RUFF_FILE_INDEX_SIZE=" + str(len(candidates)))
+            findings: set[tuple[int, str]] = set()
+            lines = source.splitlines()
+            for i, line in enumerate(lines):
+                compact = re.match(
+                    r"^([a-zA-Z0-9_./-]+\.py):\d+:\d+:\s+([A-Z][0-9]{3})\b",
+                    line,
+                )
+                if compact:
+                    index = by_path.get(compact.group(1).removeprefix("./"))
+                    if index is not None:
+                        findings.add((index, compact.group(2)))
+                code = re.match(r"^([A-Z][0-9]{3})\b", line)
+                if code:
+                    for location in lines[i + 1 : i + 4]:
+                        match = re.search(
+                            r"--?>\s+([a-zA-Z0-9_./-]+\.py):\d+:\d+",
+                            location,
+                        )
+                        if match:
+                            index = by_path.get(match.group(1).removeprefix("./"))
+                            if index is not None:
+                                findings.add((index, code.group(1)))
+                            break
+            print("QDIP_RUFF_FINDING_COUNT=" + str(len(findings)))
+            for index, code in sorted(findings)[:20]:
+                print(f"QDIP_RUFF_FILE_ORDINAL={index} RULE={code}")
+            if len(findings) > 20:
+                print("QDIP_RUFF_FINDINGS_TRUNCATED=true")
     if args.stage == "mongodb-recovery" and status != "PASS" and path.exists():
         # Safe only for the synthetic hard-coded local RR restore verifier.
         # Never release unfiltered backend stderr or payloads into public Actions.
