@@ -1,0 +1,52 @@
+name: Doctor P1 live-user release gate (manual only)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: doctor-p1-live-user-release
+  cancel-in-progress: false
+jobs:
+  real-p1-user:
+    if: github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify existing sealed Zitadel test user binding
+        env:
+          TEST_LOGIN: ${{ secrets.QDIP_E2E_ZITADEL_TEST_LOGIN }}
+          TEST_PASSWORD: ${{ secrets.QDIP_E2E_ZITADEL_TEST_PASSWORD }}
+        run: |
+          test -n "$TEST_LOGIN"
+          test -n "$TEST_PASSWORD"
+      - name: Validate bounded P1 E2E source before authentication
+        run: node --check scripts/doctor_p1_repair_live_user.mjs
+      - name: Install isolated Chromium
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/doctor-p1-release
+          cp scripts/doctor_p1_repair_live_user.mjs /tmp/doctor-p1-release/
+          cd /tmp/doctor-p1-release
+          npm init -y >/dev/null
+          npm install --no-save --ignore-scripts @playwright/test@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Genuine Zitadel browser and two verified CP-SAT repairs
+        env:
+          QDIP_E2E_ZITADEL_TEST_LOGIN: ${{ secrets.QDIP_E2E_ZITADEL_TEST_LOGIN }}
+          QDIP_E2E_ZITADEL_TEST_PASSWORD: ${{ secrets.QDIP_E2E_ZITADEL_TEST_PASSWORD }}
+          CI: 'true'
+        run: |
+          cd /tmp/doctor-p1-release
+          node doctor_p1_repair_live_user.mjs
+      - name: Security controls not exercised
+        if: success()
+        run: |
+          echo 'DOCTOR_P1_ROLELESS_TEST_USER=NOT_TESTED'
+          echo 'DOCTOR_P1_MOBILE_ACCESSIBILITY=NOT_TESTED'
+          echo 'DOCTOR_P1_PROD_PIN_CONFIRMED_OUT_OF_BAND=REQUIRED'
