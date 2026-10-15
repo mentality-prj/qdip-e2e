@@ -1,0 +1,24 @@
+name: Doctor P1 external MCP OAuth negative HTTP smoke (manual)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: doctor-p1-external-mcp
+  cancel-in-progress: false
+jobs:
+  external-mcp:
+    if: github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify public MCP OAuth metadata and all negative bearers
+        run: |
+          node --check scripts/doctor_p1_external_mcp.mjs
+          node scripts/doctor_p1_external_mcp.mjs
