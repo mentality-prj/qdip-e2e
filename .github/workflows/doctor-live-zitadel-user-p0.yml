@@ -1,10 +1,7 @@
 name: QDIP Doctor real existing Zitadel user P1
 run-name: Doctor P1 hard-core external browser test
 on:
-  push:
-    branches: [test/doctor-live-zitadel-user-p0]
-    paths:
-      - .github/workflows/doctor-live-zitadel-user-p0.yml
+  # The P1 live-user qualification passed. No automatic credential replays.
   workflow_dispatch:
 permissions:
   contents: read
