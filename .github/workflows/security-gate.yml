@@ -42,10 +42,7 @@ jobs:
       SOURCE_REF: ${{ inputs.source_ref }}
       EXPECTED_SHA: ${{ inputs.expected_sha }}
       SKILL_SHA: c1c8a8c1471069fb0e188eeaff69b8e8db6564a8
-      GATE_REPORT_DIR: ${{ runner.temp }}/qdip-security-private/report
-      SANITIZED_DIR: ${{ runner.temp }}/qdip-security-public
       SOURCE_DIR: ${{ github.workspace }}/target
-      SKILL_DIR: ${{ runner.temp }}/qdip-skills/security-audit
     steps:
       - name: Checkout public E2E gate code
         uses: actions/checkout@v4
@@ -76,6 +73,12 @@ jobs:
           ref: c1c8a8c1471069fb0e188eeaff69b8e8db6564a8
           path: upstream-skill
           persist-credentials: false
+
+      - name: Define runner-only gate paths
+        run: |
+          echo "GATE_REPORT_DIR=$RUNNER_TEMP/qdip-security-private/report" >> "$GITHUB_ENV"
+          echo "SANITIZED_DIR=$RUNNER_TEMP/qdip-security-public" >> "$GITHUB_ENV"
+          echo "SKILL_DIR=$RUNNER_TEMP/qdip-skills/security-audit" >> "$GITHUB_ENV"
 
       - name: Stage pinned skill outside source repository
         shell: bash
