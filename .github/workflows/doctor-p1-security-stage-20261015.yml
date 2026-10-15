@@ -1,0 +1,29 @@
+name: Doctor P1 security one-shot staging negatives
+on:
+  push:
+    branches: [test/doctor-p1-security-stage-20261015]
+    paths:
+      - .github/workflows/doctor-p1-security-stage-20261015.yml
+permissions:
+  contents: read
+jobs:
+  security-stage:
+    if: github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Negative external auth and login admission
+        run: |
+          node --check scripts/doctor_p1_security_stage.mjs
+          node scripts/doctor_p1_security_stage.mjs
+      - name: State excluded positive-user checks
+        if: success()
+        run: |
+          echo 'DOCTOR_P1_ROLELESS_ZITADEL=NOT_TESTED'
+          echo 'DOCTOR_P1_AUTHENTICATED_UPLOAD_TIMEOUT=TESTED_WITH_SYNTHETIC_SESSION_ONLY'
