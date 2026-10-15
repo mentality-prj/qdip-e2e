@@ -364,6 +364,32 @@ async function assertConcurrentTenantIsolation(a, b) {
   console.log("DZVIN_CONCURRENT_CROSS_ACCOUNT_CACHE_BOUNDARY=PASS");
 }
 
+/**
+ * Gate 3 read-only negative acceptance against a real Zitadel user session.
+ * The checked identities are ordinary members, not QDIP platform admins.
+ * Never submit any upstream mutation, even a deliberately invalid one.
+ */
+async function assertGate3DeniedForMember(actor, label) {
+  const paths = [
+    "/api/backend/dip-admin/organizations",
+    "/api/backend/dip-admin/organizations/qdip-gate3-probe/keys",
+    "/api/backend/dip-admin/organizations/qdip-gate3-probe/audit?limit=1",
+  ];
+  for (const path of paths) {
+    const response = await actor.context.request.get(SITE + path, {
+      maxRedirects: 0,
+      timeout: 10000,
+    });
+    requireStage(response.status() === 403, label + "_QDIP_GLOBAL_ADMIN_READ_NOT_DENIED");
+    requireStage(
+      (response.headers()["cache-control"] || "").includes("no-store"),
+      label + "_QDIP_DENIAL_MISSING_NO_STORE",
+    );
+    requireStage(!response.headers()["location"], label + "_QDIP_DENIAL_REDIRECTED");
+  }
+  console.log(label + "_GATE3_QDIP_PLATFORM_ADMIN_DENIAL=PASS");
+}
+
 async function main() {
   assertPreflight();
   console.log("DZVIN_QA_PAIR_SECRET_BINDING=PASS");
@@ -380,6 +406,8 @@ async function main() {
     await denyForeignAccess(b, a.companyId, "QA2");
     await assertMemberBoundary(a, b.companyId, "QA1");
     await assertMemberBoundary(b, a.companyId, "QA2");
+    await assertGate3DeniedForMember(a, "QA1");
+    await assertGate3DeniedForMember(b, "QA2");
     await assertUnauthenticatedBoundary(browser, a.companyId, b.companyId);
     await assertConcurrentTenantIsolation(a, b);
     console.log("DZVIN_REAL_QA1_QA2_COMPANY_GATE=PASS");
