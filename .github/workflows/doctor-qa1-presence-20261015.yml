@@ -1,0 +1,72 @@
+name: Doctor QA1 secret-name presence diagnostic
+on:
+  push:
+    branches: [test/doctor-roleless-qa1-20261015]
+    paths:
+      - .github/workflows/doctor-qa1-presence-20261015.yml
+permissions:
+  contents: read
+jobs:
+  presence:
+    if: github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Print only whether QA1-specific secret names exist
+        env:
+          CHECK_0: ${{ secrets.QDIP_E2E_ZITADEL_QA1_LOGIN != '' }}
+          CHECK_1: ${{ secrets.QDIP_E2E_ZITADEL_QA1_PASSWORD != '' }}
+          CHECK_2: ${{ secrets.QDIP_E2E_ZITADEL_QA1_TEST_LOGIN != '' }}
+          CHECK_3: ${{ secrets.QDIP_E2E_ZITADEL_QA1_TEST_PASSWORD != '' }}
+          CHECK_4: ${{ secrets.QDIP_E2E_ZITADEL_ROLELESS_LOGIN != '' }}
+          CHECK_5: ${{ secrets.QDIP_E2E_ZITADEL_ROLELESS_PASSWORD != '' }}
+          CHECK_6: ${{ secrets.QDIP_E2E_ZITADEL_NO_ROLE_LOGIN != '' }}
+          CHECK_7: ${{ secrets.QDIP_E2E_ZITADEL_NO_ROLE_PASSWORD != '' }}
+          CHECK_8: ${{ secrets.QDIP_ZITADEL_QA1_LOGIN != '' }}
+          CHECK_9: ${{ secrets.QDIP_ZITADEL_QA1_PASSWORD != '' }}
+          CHECK_10: ${{ secrets.ZITADEL_QA1_LOGIN != '' }}
+          CHECK_11: ${{ secrets.ZITADEL_QA1_PASSWORD != '' }}
+          CHECK_12: ${{ secrets.QA1_ZITADEL_LOGIN != '' }}
+          CHECK_13: ${{ secrets.QA1_ZITADEL_PASSWORD != '' }}
+          CHECK_14: ${{ secrets.QDIP_E2E_QA1_LOGIN != '' }}
+          CHECK_15: ${{ secrets.QDIP_E2E_QA1_PASSWORD != '' }}
+          CHECK_16: ${{ secrets.QDIP_E2E_ZITADEL_TEST2_LOGIN != '' }}
+          CHECK_17: ${{ secrets.QDIP_E2E_ZITADEL_TEST2_PASSWORD != '' }}
+          CHECK_18: ${{ secrets.QDIP_E2E_ZITADEL_NEGATIVE_LOGIN != '' }}
+          CHECK_19: ${{ secrets.QDIP_E2E_ZITADEL_NEGATIVE_PASSWORD != '' }}
+          CHECK_20: ${{ secrets.QDIP_E2E_ZITADEL_ROLELESS_TEST_LOGIN != '' }}
+          CHECK_21: ${{ secrets.QDIP_E2E_ZITADEL_ROLELESS_TEST_PASSWORD != '' }}
+        run: |
+          set -euo pipefail
+          while IFS=: read -r index name; do
+            case "$index" in
+              ''|*[!0-9]*) continue ;;
+            esac
+            key="CHECK_$index"
+            if [ "${!key:-false}" = "true" ]; then
+              echo "QA1_SECRET_NAME_PRESENT=$name"
+            fi
+          done <<'SECRET_NAMES'
+            0:QDIP_E2E_ZITADEL_QA1_LOGIN
+            1:QDIP_E2E_ZITADEL_QA1_PASSWORD
+            2:QDIP_E2E_ZITADEL_QA1_TEST_LOGIN
+            3:QDIP_E2E_ZITADEL_QA1_TEST_PASSWORD
+            4:QDIP_E2E_ZITADEL_ROLELESS_LOGIN
+            5:QDIP_E2E_ZITADEL_ROLELESS_PASSWORD
+            6:QDIP_E2E_ZITADEL_NO_ROLE_LOGIN
+            7:QDIP_E2E_ZITADEL_NO_ROLE_PASSWORD
+            8:QDIP_ZITADEL_QA1_LOGIN
+            9:QDIP_ZITADEL_QA1_PASSWORD
+            10:ZITADEL_QA1_LOGIN
+            11:ZITADEL_QA1_PASSWORD
+            12:QA1_ZITADEL_LOGIN
+            13:QA1_ZITADEL_PASSWORD
+            14:QDIP_E2E_QA1_LOGIN
+            15:QDIP_E2E_QA1_PASSWORD
+            16:QDIP_E2E_ZITADEL_TEST2_LOGIN
+            17:QDIP_E2E_ZITADEL_TEST2_PASSWORD
+            18:QDIP_E2E_ZITADEL_NEGATIVE_LOGIN
+            19:QDIP_E2E_ZITADEL_NEGATIVE_PASSWORD
+            20:QDIP_E2E_ZITADEL_ROLELESS_TEST_LOGIN
+            21:QDIP_E2E_ZITADEL_ROLELESS_TEST_PASSWORD
+          SECRET_NAMES
+          echo "QA1_SECRET_VALUES=NOT_READ_OR_PRINTED"
