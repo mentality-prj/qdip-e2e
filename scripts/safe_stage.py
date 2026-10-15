@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -66,6 +67,26 @@ def main() -> int:
     # Separate sanitized phase ledger for final TEST_FAIL vs INFRA_FAIL status.
     with (Path(temp) / "qdip-stage-results.jsonl").open("a", encoding="utf-8") as out:
         out.write(json.dumps({"stage": args.stage, "status": status}) + chr(10))
+    if args.stage == "mongodb-recovery" and status != "PASS" and path.exists():
+        # Safe only for the synthetic hard-coded local RR restore verifier.
+        # Never release unfiltered backend stderr or payloads into public Actions.
+        source = path.read_text(encoding="utf-8", errors="replace")
+        phases = re.findall(
+            r"^RR_RECOVERY_PHASE=(SEED_START|BASE_SEED|ECONOMIC_SEED_OLD|"
+            r"ECONOMIC_SEED_ROTATED|BASE_VERIFY|ECONOMIC_VERIFY|"
+            r"VERIFY_START|TAMPER_START)$",
+            source,
+            flags=re.MULTILINE,
+        )
+        kinds = re.findall(
+            r"^RR_RECOVERY_ERROR_CLASS=(ValidationError|TypeError|ValueError|"
+            r"RuntimeError|ImportError|ModuleNotFoundError|AssertionError|"
+            r"KeyError|AttributeError|OperationFailure|OTHER)$",
+            source,
+            flags=re.MULTILINE,
+        )
+        print("QDIP_RECOVERY_LAST_PHASE=" + (phases[-1] if phases else "UNKNOWN"))
+        print("QDIP_RECOVERY_ERROR_CLASS=" + (kinds[-1] if kinds else "UNKNOWN"))
     print(f"QDIP_STAGE_{args.stage.upper().replace('-', '_')}={status}")
     return 0 if status == "PASS" else 1
 
