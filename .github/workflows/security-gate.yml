@@ -77,6 +77,17 @@ jobs:
           path: target
           persist-credentials: false
 
+      - name: Refuse stale source SHA and dirty checkout before scanning
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git -C target rev-parse HEAD)"
+          if [[ -n "$EXPECTED_SHA" ]] && [[ "$actual" != "$EXPECTED_SHA" ]]; then
+            echo "Expected SHA mismatch; refusing scan"
+            exit 1
+          fi
+          test -z "$(git -C target status --porcelain)"
+
       - uses: actions/setup-go@v5
         with:
           go-version: '1.23.4'
@@ -106,6 +117,7 @@ jobs:
         continue-on-error: true
         with:
           scan-type: 'fs'
+          version: 'v0.70.0'
           scan-ref: 'target'
           scanners: 'vuln,misconfig'
           format: 'json'
