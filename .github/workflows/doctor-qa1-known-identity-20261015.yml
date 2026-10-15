@@ -1,0 +1,31 @@
+name: Doctor QA1 safe known-secret identity check
+on:
+  push:
+    branches: [test/doctor-roleless-qa1-20261015]
+    paths:
+      - .github/workflows/doctor-qa1-known-identity-20261015.yml
+permissions:
+  contents: read
+jobs:
+  bound-identity:
+    if: github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Match established Zitadel test user to QA1 without revealing login
+        env:
+          EXISTING_LOGIN: ${{ secrets.QDIP_E2E_ZITADEL_TEST_LOGIN }}
+          EXISTING_PASSWORD_PRESENT: ${{ secrets.QDIP_E2E_ZITADEL_TEST_PASSWORD != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${EXISTING_LOGIN,,}" = "qa1@qdip.ai" ]; then
+            echo "DOCTOR_ROLELESS_QA1_DEFAULT_IDENTITY=PASS"
+          else
+            echo "DOCTOR_ROLELESS_QA1_DEFAULT_IDENTITY=NOT_MATCHED"
+          fi
+          if [ "$EXISTING_PASSWORD_PRESENT" = "true" ]; then
+            echo "DOCTOR_DEFAULT_TEST_PASSWORD_PRESENT=PASS"
+          else
+            echo "DOCTOR_DEFAULT_TEST_PASSWORD_PRESENT=FAIL"
+          fi
+          echo "DOCTOR_TEST_CREDENTIAL_VALUES=NOT_LOGGED"
