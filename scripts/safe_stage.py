@@ -102,11 +102,11 @@ def main() -> int:
         # relay private Ruff/mypy/pytest output, test names, traceback or paths.
         source = path.read_text(encoding="utf-8", errors="replace")
         categories = (
-            (r"^\\$ .* -m ruff check \\.$", "RUFF"),
-            (r"^\\$ .* -m mypy app$", "MYPY_APP"),
-            (r"^\\$ .* -m mypy tests$", "MYPY_TESTS"),
-            (r"^\\$ .* -m pytest$", "PYTEST"),
-            (r"^\\$ .* -m app\\.runtime\\.freeze_evidence$", "FREEZE"),
+            (r"^\$ .* -m ruff check \.$", "RUFF"),
+            (r"^\$ .* -m mypy app$", "MYPY_APP"),
+            (r"^\$ .* -m mypy tests$", "MYPY_TESTS"),
+            (r"^\$ .* -m pytest$", "PYTEST"),
+            (r"^\$ .* -m app\.runtime\.freeze_evidence$", "FREEZE"),
         )
         last = "UNKNOWN"
         positions = [
