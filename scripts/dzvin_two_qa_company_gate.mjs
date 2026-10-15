@@ -128,6 +128,10 @@ async function loginAndResolveCompany(browser, user) {
     requireStage(response.status() === 200, user.name + "_COMPANY_LIST_UNAVAILABLE");
     const companies = await response.json();
     requireStage(Array.isArray(companies), user.name + "_COMPANY_LIST_INVALID");
+    if (companies.length === 1) {
+      const expectedName = user.name === "QA1" ? "TechCorp Solutions" : "QDIP Gate2 QA Isolation B";
+      requireStage(companies[0]?.name === expectedName, user.name + "_TEST_COMPANY_UNEXPECTED");
+    }
     const ids = companies.map(item => item?.id);
     requireStage(ids.every(id => /^[a-f0-9]{24}$/i.test(id || "")),
       user.name + "_COMPANY_ID_INVALID");
@@ -288,9 +292,11 @@ async function assertMemberBoundary(actor, foreignCompanyId, label) {
   requireStage(!csrf.headers()["set-cookie"], label + "_CSRF_SET_COOKIE");
 
   // These requests MUST be rejected by the BFF origin check *before* backend writes.
+  // Never even probe a would-be write against the populated TechCorp demo.
+  // If a CSRF regression makes a request reach Mongo, only the disposable B fixture is targeted.
+  const disposableCompanyId = label === "QA1" ? foreignCompanyId : own;
   for (const path of [
-    "/api/backend/companies/" + foreignCompanyId + "/groups",
-    "/api/backend/companies/" + own + "/groups",
+    "/api/backend/companies/" + disposableCompanyId + "/groups",
   ]) {
     await expectNoStoreDenied(
       await api.post(SITE + path, {
