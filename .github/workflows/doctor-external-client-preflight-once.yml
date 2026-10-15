@@ -2,7 +2,7 @@ name: Doctor new OAuth client registration preflight one-shot
 on:
   push:
     branches: [test/doctor-external-client-jwt-real-e2e-20261015]
-    paths: [.github/workflows/doctor-external-client-preflight-once.yml]
+    paths: [.github/workflows/doctor-external-client-preflight-once.yml, scripts/doctor_external_client_preflight.mjs]
 permissions:
   contents: read
 jobs:
