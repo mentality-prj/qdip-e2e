@@ -87,7 +87,7 @@ async function check(browser, variant) {
       const headingBounds=el.parentElement.querySelector('h1').getBoundingClientRect();
       const ctaBounds=el.parentElement.querySelector('.login-submit').getBoundingClientRect();
       return {image:img.backgroundImage,animation:img.animationName,
-        position:shell.position,grid:layout.gridTemplateAreas,
+        position:shell.position,grid:layout.gridTemplateAreas,align:layout.alignItems,
         sceneTop:sceneBounds.top,headingTop:headingBounds.top,
         ctaTop:ctaBounds.top,copyZ:copy.zIndex,sceneZ:shell.zIndex};
     });
@@ -97,6 +97,9 @@ async function check(browser, variant) {
     if(width<=850) {
       assert.equal(styles.position,'absolute','Mobile image must be a background, not a block');
       assert.equal(styles.grid,'"details"','Mobile must not allocate a second artwork grid row');
+      assert.equal(styles.align,'start','Mobile copy must be top aligned, not centered over the calendar');
+      assert.ok(styles.headingTop-brandBounds.headerBottom<55,
+        'Hero heading must start directly after header instead of floating into the artwork');
       assert.ok(styles.sceneTop<=styles.headingTop,'Background must start behind the heading');
       assert.ok(styles.sceneTop<styles.ctaTop,'Background must not appear only below CTA');
       assert.ok(Number(styles.copyZ)>Number(styles.sceneZ),'Sign-in content must layer above the artwork');
