@@ -1,5 +1,6 @@
 /** Public, credential-free real HTTP smoke against isolated Doctor P1 audit staging. */
-const ORIGIN="https://doctor-p1-audit-stage-20261015-production.up.railway.app";
+const ORIGIN=process.env.DOCTOR_P1_AUDIT_URL ?? "https://doctor.qdip.ai";
+if(!/^https:\/\/[a-z0-9.-]+$/.test(ORIGIN))throw Error("INVALID_AUDIT_ORIGIN");
 function check(v,name){if(!v)throw Error(name);}
 async function hit(path,opts={}){
   const res=await fetch(ORIGIN+path,{
