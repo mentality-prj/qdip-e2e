@@ -14,6 +14,12 @@ async function main(){
  const oidc=await fetch(issuer+"/.well-known/openid-configuration",{signal:AbortSignal.timeout(12000)});
  if(oidc.status!==200)deny("ZITADEL_OIDC_DISCOVERY_HTTP");
  const configuration=await oidc.json();
+ console.log("DOCTOR_ZITADEL_RFC9207_ISS_SUPPORTED="+
+   (configuration.authorization_response_iss_parameter_supported===true?"YES":"NO"));
+ console.log("DOCTOR_ZITADEL_DYNAMIC_CLIENT_REGISTRATION="+
+   (typeof configuration.registration_endpoint==="string"?"AVAILABLE":"NOT_ADVERTISED"));
+ console.log("DOCTOR_ZITADEL_PUBLIC_PKCE_TOKEN_AUTH="+
+   (configuration.token_endpoint_auth_methods_supported?.includes("none")?"ADVERTISED":"NOT_ADVERTISED"));
  const authorization=new URL(configuration.authorization_endpoint);
  if(authorization.protocol!=="https:"||authorization.origin!==new URL(issuer).origin)
    deny("ZITADEL_AUTHORIZATION_HOST");
