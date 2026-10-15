@@ -40,6 +40,7 @@ test('unknown, missing, stale, or unresolved evidence is INCOMPLETE', () => {
   assert.equal(classify({ ...complete, requiredPresent: false }), 'INCOMPLETE');
   assert.equal(classify({ ...complete, schemaValid: false }), 'INCOMPLETE');
   assert.equal(classify({ ...complete, sourceClean: false }), 'INCOMPLETE');
+  assert.equal(classify({ ...complete, metadataValid: false }), 'INCOMPLETE');
   assert.equal(classify({ ...complete, ledger: [] }), 'INCOMPLETE');
   assert.equal(classify({ ...complete, findings: null }), 'INCOMPLETE');
   assert.equal(classify({ ...complete, findings: [{ verdict: 'needs_validation' }] }), 'INCOMPLETE');
