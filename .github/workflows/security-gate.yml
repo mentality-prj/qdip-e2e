@@ -76,9 +76,11 @@ jobs:
 
       - name: Define runner-only gate paths
         run: |
-          echo "GATE_REPORT_DIR=$RUNNER_TEMP/qdip-security-private/report" >> "$GITHUB_ENV"
-          echo "SANITIZED_DIR=$RUNNER_TEMP/qdip-security-public" >> "$GITHUB_ENV"
-          echo "SKILL_DIR=$RUNNER_TEMP/qdip-skills/security-audit" >> "$GITHUB_ENV"
+          {
+            echo "GATE_REPORT_DIR=$RUNNER_TEMP/qdip-security-private/report"
+            echo "SANITIZED_DIR=$RUNNER_TEMP/qdip-security-public"
+            echo "SKILL_DIR=$RUNNER_TEMP/qdip-skills/security-audit"
+          } >> "$GITHUB_ENV"
 
       - name: Stage pinned skill outside source repository
         shell: bash
