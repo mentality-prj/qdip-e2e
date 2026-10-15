@@ -194,6 +194,170 @@ async function denyForeignAccess(actor, companyId, label) {
   console.log(label + "_BIDIRECTIONAL_COMPANY_ISOLATION=PASS");
 }
 
+
+/**
+ * Gate 2 stage 2: read-only security boundary probes on actual member sessions.
+ * Never submit a valid, authorized mutation to the populated TechCorp demo.
+ * Origin-denied requests are stopped by the Next.js BFF before reaching MongoDB.
+ */
+async function expectNoStoreDenied(response, label, statuses = [403, 404]) {
+  requireStage(statuses.includes(response.status()), label + "_DENIAL_STATUS_UNEXPECTED");
+  requireStage(
+    (response.headers()["cache-control"] || "").includes("no-store"),
+    label + "_DENIAL_CACHE_POLICY_MISSING",
+  );
+}
+
+async function assertMemberBoundary(actor, foreignCompanyId, label) {
+  const api = actor.context.request;
+  const own = actor.companyId;
+  const sessionResponse = await api.get(SITE + "/api/auth/session");
+  requireStage(sessionResponse.status() === 200, label + "_CURRENT_SESSION_UNAVAILABLE");
+  const session = await sessionResponse.json();
+  requireStage(session.id === actor.subject, label + "_SESSION_SUBJECT_CHANGED");
+  requireStage(session.companyId === own, label + "_SESSION_COMPANY_MISMATCH");
+  requireStage(session.role === "user", label + "_UNEXPECTED_PLATFORM_ADMIN_ROLE");
+  requireStage(session.companyRole === "employee", label + "_UNEXPECTED_COMPANY_PRIVILEGE");
+
+  // A normal company member may not use any manager or company-admin read endpoints.
+  for (const suffix of [
+    "/analytics/mood",
+    "/employees",
+    "/access-scopes",
+    "/salary-grades",
+  ]) {
+    await expectNoStoreDenied(
+      await api.get(SITE + "/api/backend/companies/" + own + suffix),
+      label + "_OWN_PRIVILEGED_READ",
+      [403],
+    );
+  }
+  await expectNoStoreDenied(
+    await api.get(SITE + "/api/backend/companies"),
+    label + "_GLOBAL_COMPANY_ENUMERATION",
+    [403],
+  );
+  await expectNoStoreDenied(
+    await api.get(SITE + "/api/backend/companies/" + own + "/access-scopes", {
+      headers: { "x-company-id": own, "x-company-role": "superuser" },
+    }),
+    label + "_FORGED_OWN_ROLE",
+    [403],
+  );
+  console.log(label + "_CANONICAL_MEMBER_ROLE_BOUNDARY=PASS");
+
+  // A stale/hostile tenant-selection cookie must not grant another company.
+  await actor.context.addCookies([{
+    name: "dzvin-active-company",
+    value: foreignCompanyId,
+    url: SITE,
+    httpOnly: true,
+    secure: true,
+    sameSite: "Lax",
+  }]);
+  try {
+    const stale = await api.get(SITE + "/api/auth/session");
+    requireStage(stale.status() === 200, label + "_STALE_SELECTION_LOST_SESSION");
+    const resolved = await stale.json();
+    requireStage(resolved.id === actor.subject, label + "_STALE_SELECTION_CHANGED_IDENTITY");
+    requireStage(resolved.companyId !== foreignCompanyId, label + "_STALE_SELECTION_TENANT_LEAK");
+    await expectNoStoreDenied(
+      await api.get(SITE + "/api/backend/companies/" + foreignCompanyId + "/groups"),
+      label + "_STALE_SELECTION_FOREIGN_ACCESS",
+    );
+  } finally {
+    await actor.context.clearCookies({ name: "dzvin-active-company" });
+  }
+  console.log(label + "_STALE_TENANT_COOKIE_BOUNDARY=PASS");
+
+  const origin = SITE;
+  const invalid = await api.post(SITE + "/api/company-context", {
+    headers: { origin },
+    form: { companyId: "not-an-object-id", locale: "en" },
+    maxRedirects: 0,
+  });
+  requireStage(invalid.status() === 400, label + "_INVALID_TENANT_ID_ACCEPTED");
+  requireStage(!invalid.headers()["set-cookie"], label + "_INVALID_TENANT_SET_COOKIE");
+
+  const csrf = await api.post(SITE + "/api/company-context", {
+    headers: { origin: "https://attacker.invalid" },
+    form: { companyId: own, locale: "en" },
+    maxRedirects: 0,
+  });
+  requireStage(csrf.status() === 403, label + "_COMPANY_SWITCH_CSRF_ACCEPTED");
+  requireStage(!csrf.headers()["set-cookie"], label + "_CSRF_SET_COOKIE");
+
+  // These requests MUST be rejected by the BFF origin check *before* backend writes.
+  for (const path of [
+    "/api/backend/companies/" + foreignCompanyId + "/groups",
+    "/api/backend/companies/" + own + "/groups",
+  ]) {
+    await expectNoStoreDenied(
+      await api.post(SITE + path, {
+        headers: { origin: "https://attacker.invalid" },
+        data: { name: "DENY-GATE2-BEFORE-MONGO", type: "team" },
+      }),
+      label + "_MUTATION_CSRF",
+      [403],
+    );
+  }
+  await expectNoStoreDenied(
+    await api.get(SITE + "/api/backend/auth/validate-token"),
+    label + "_IDENTITY_PROXY_ALLOWLIST",
+    [400],
+  );
+  console.log(label + "_CSRF_AND_PROXY_ALLOWLIST=PASS");
+}
+
+async function assertUnauthenticatedBoundary(browser, aId, bId) {
+  const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+  try {
+    for (const path of [
+      "/api/auth/session",
+      "/api/backend/companies/mine",
+      "/api/backend/companies/" + aId,
+      "/api/backend/companies/" + bId + "/invites",
+    ]) {
+      const response = await context.request.get(SITE + path, { maxRedirects: 0 });
+      requireStage(response.status() === 401, "ANONYMOUS_COMPANY_READ_NOT_BLOCKED");
+      requireStage(
+        (response.headers()["cache-control"] || "").includes("no-store"),
+        "ANONYMOUS_RESPONSE_CACHE_POLICY_MISSING",
+      );
+    }
+    console.log("DZVIN_ANONYMOUS_COMPANY_BOUNDARY=PASS");
+  } finally {
+    await context.close();
+  }
+}
+
+async function assertConcurrentTenantIsolation(a, b) {
+  // Same x-request-id across two distinct identity sessions is intentional:
+  // request-scoped memoization must always include the bearer identity and tenant.
+  const requestId = "dzvin-qa-pair-cache-isolation";
+  const checks = [
+    [a, a.companyId, 200],
+    [b, b.companyId, 200],
+    [a, b.companyId, 403],
+    [b, a.companyId, 403],
+  ];
+  const results = await Promise.all(checks.map(async ([actor, companyId, expected]) => {
+    const response = await actor.context.request.get(
+      SITE + "/api/backend/companies/" + companyId,
+      { headers: { "x-request-id": requestId }, maxRedirects: 0 },
+    );
+    return { status: response.status(), expected, cache: response.headers()["cache-control"] || "" };
+  }));
+  for (const result of results) {
+    requireStage(
+      result.expected === 200 ? result.status === 200 : [403, 404].includes(result.status),
+      "CONCURRENT_COMPANY_RESPONSE_WRONG",
+    );
+    requireStage(result.cache.includes("no-store"), "CONCURRENT_CACHE_CONTROL_MISSING");
+  }
+  console.log("DZVIN_CONCURRENT_CROSS_ACCOUNT_CACHE_BOUNDARY=PASS");
+}
+
 async function main() {
   assertPreflight();
   console.log("DZVIN_QA_PAIR_SECRET_BINDING=PASS");
@@ -208,7 +372,12 @@ async function main() {
     requireStage(a.companyId !== b.companyId, "DZVIN_QA_COMPANIES_NOT_DISTINCT");
     await denyForeignAccess(a, b.companyId, "QA1");
     await denyForeignAccess(b, a.companyId, "QA2");
+    await assertMemberBoundary(a, b.companyId, "QA1");
+    await assertMemberBoundary(b, a.companyId, "QA2");
+    await assertUnauthenticatedBoundary(browser, a.companyId, b.companyId);
+    await assertConcurrentTenantIsolation(a, b);
     console.log("DZVIN_REAL_QA1_QA2_COMPANY_GATE=PASS");
+    console.log("DZVIN_GATE2_TWO_ACCOUNT_BOUNDARIES=PASS");
   } finally {
     await Promise.all([a?.context.close(), b?.context.close()]);
     await browser.close();
