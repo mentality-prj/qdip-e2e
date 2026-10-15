@@ -60,6 +60,13 @@ async function check(browser, variant) {
     assert.equal(await page.locator('.product-lockup-vhv').count(),0,
       'Obsolete VHV image mark must not be rendered');
     await page.locator('.product-lockup-wordmark').waitFor({state:'visible',timeout:10000});
+    const brandBounds=await page.evaluate(()=>{
+      const header=document.querySelector('.login-header').getBoundingClientRect();
+      const logo=document.querySelector('.product-lockup-wordmark').getBoundingClientRect();
+      return {headerBottom:header.bottom,logoBottom:logo.bottom};
+    });
+    assert.ok(brandBounds.logoBottom<=brandBounds.headerBottom+2,
+      'QDIP lettering descender is clipped by the mobile hero boundary');
     const button=page.getByRole('button',{name:lang==='uk'?/Увійти/:/sign in|log in/i}).first();
     await button.waitFor({state:'visible',timeout:10000});
     assert.ok(await button.isEnabled(),'Zitadel sign-in CTA must be enabled');
@@ -81,7 +88,8 @@ async function check(browser, variant) {
         sceneTop:sceneBounds.top,headingTop:headingBounds.top,
         ctaTop:ctaBounds.top,copyZ:copy.zIndex,sceneZ:shell.zIndex};
     });
-    assert.match(styles.image,/vhv-hero-approved\.webp/,'Approved artwork is missing');
+    const assetName=width<=850?'vhv-hero-mobile.webp':'vhv-hero-desktop.webp';
+    assert.ok(styles.image.includes(assetName),'Expected viewport-specific hero '+assetName);
     assert.equal(styles.animation,'none','Reduced motion must disable decorative movement');
     if(width<=850) {
       assert.equal(styles.position,'absolute','Mobile image must be a background, not a block');
@@ -90,12 +98,22 @@ async function check(browser, variant) {
       assert.ok(styles.sceneTop<styles.ctaTop,'Background must not appear only below CTA');
       assert.ok(Number(styles.copyZ)>Number(styles.sceneZ),'Sign-in content must layer above the artwork');
     }
-    const artResponse=await page.request.get(url+'/vhv-hero-approved.webp',{timeout:15000});
+    const artResponse=await page.request.get(url+'/'+assetName,{timeout:15000});
     assert.equal(artResponse.status(),200,'Approved WebP must load');
     assert.match(artResponse.headers()['content-type']||'',/image\/webp/,'Expected actual WebP media type');
     const webp=await artResponse.body();
     assert.equal(webp.toString('ascii',0,4),'RIFF');
     assert.equal(webp.toString('ascii',8,12),'WEBP');
+    const dimensions=await page.evaluate(async imageUrl=>new Promise((resolve,reject)=>{
+      const image=new Image();image.onload=()=>resolve({width:image.naturalWidth,height:image.naturalHeight});
+      image.onerror=()=>reject(Error('Portrait artwork failed to decode'));image.src=imageUrl;
+    }),'/'+assetName);
+    if(width<=850) {
+      assert.ok(dimensions.height>=dimensions.width*1.5,
+        'Mobile must use a genuine portrait picture rather than a landscape crop');
+      assert.equal(await page.getByRole('button',{name:/Встановити на телефон|install on phone/i}).count(),0,
+        'Public sign-in should not compete with a secondary install CTA');
+    }
 
     const bounds=await page.evaluate(()=>({
       document:document.documentElement.scrollWidth,viewport:window.innerWidth,
