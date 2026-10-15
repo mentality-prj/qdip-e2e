@@ -1,0 +1,33 @@
+name: Doctor P1 pinned staging smoke
+run-name: Doctor P1 staging a21bc8ec external smoke
+on:
+  push:
+    branches: [test/doctor-p1-repair-staging-20261015]
+    paths:
+      - .github/workflows/doctor-p1-repair-stage.yml
+      - scripts/doctor_p1_repair_stage.mjs
+permissions:
+  contents: read
+jobs:
+  anonymous-externals:
+    if: github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax and production-safe anonymous E2E
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check scripts/doctor_p1_repair_stage.mjs
+          node scripts/doctor_p1_repair_stage.mjs
+      - name: Explicit non-qualifications
+        run: |
+          echo 'DOCTOR_P1_POSITIVE_ZITADEL=NOT_TESTED'
+          echo 'DOCTOR_P1_NEGATIVE_ROLELESS=NOT_TESTED'
+          echo 'DOCTOR_P1_PRODUCTION_PROMOTION=NOT_TESTED'
