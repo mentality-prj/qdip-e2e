@@ -15,7 +15,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: qdip-e2e-static-lint
+  group: qdip-e2e-static-lint-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
