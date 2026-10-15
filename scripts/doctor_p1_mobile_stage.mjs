@@ -4,7 +4,8 @@
  */
 import {chromium, request} from "@playwright/test";
 
-const SITE="https://doctor-p1-mobile-stage-20261015-production.up.railway.app";
+const SITE=process.env.DOCTOR_P1_A11Y_URL ?? "https://doctor.qdip.ai";
+if(!/^https:\/\/[a-z0-9.-]+$/.test(SITE)) throw Error("SITE_CONFIGURATION_INVALID");
 const widths=[320,375,390,430,768,1280];
 function check(v,name){if(!v)throw Error(name);}
 async function main(){
