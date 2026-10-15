@@ -1,8 +1,10 @@
-name: QDIP Doctor real existing Zitadel user P0
-run-name: Doctor P0 existing user browser test
+name: QDIP Doctor real existing Zitadel user P1
+run-name: Doctor P1 hard-core external browser test
 on:
-  # One-shot verification already ran successfully. Require explicit launch
-  # for future tests so normal pushes never replay the real user password.
+  push:
+    branches: [test/doctor-live-zitadel-user-p0]
+    paths:
+      - .github/workflows/doctor-live-zitadel-user-p0.yml
   workflow_dispatch:
 permissions:
   contents: read
