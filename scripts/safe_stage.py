@@ -128,6 +128,7 @@ def main() -> int:
                 and not any(part.startswith(".") for part in entry.parts)
             )
             by_path = {name.removeprefix("./"): i + 1 for i, name in enumerate(candidates)}
+            print("QDIP_RUFF_FILE_INDEX_SIZE=" + str(len(candidates)))
             findings: set[tuple[int, str]] = set()
             lines = source.splitlines()
             for i, line in enumerate(lines):
