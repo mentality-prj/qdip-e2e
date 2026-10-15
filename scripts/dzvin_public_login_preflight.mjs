@@ -1,7 +1,7 @@
 /** Credential-free dev OIDC navigation diagnosis. Never emit redirect query params or tokens. */
 import { chromium } from "@playwright/test";
 
-const SITE = "https://mentality-web-git-dev-taras-gezs-projects.vercel.app";
+const SITE = "https://mentality-web.vercel.app";
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({ ignoreHTTPSErrors: false, serviceWorkers: "block" });
 const page = await context.newPage();
