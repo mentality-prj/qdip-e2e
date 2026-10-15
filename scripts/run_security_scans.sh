@@ -19,8 +19,10 @@ scan() {
 scan gitleaks "$GATE_TOOLS_BIN/gitleaks" dir "$SOURCE_DIR" \
   --redact --no-banner --report-format json --report-path "$GATE_REPORT_DIR/gitleaks.json"
 # Gitleaks may omit its JSON when it finds nothing. Normalize only on successful execution.
-if [[ "$(cat "$GATE_REPORT_DIR/gitleaks.exit")" == 0 ]] && [[ ! -f "$GATE_REPORT_DIR/gitleaks.json" ]]; then
-  printf '[]\n' > "$GATE_REPORT_DIR/gitleaks.json"
+if [[ "$(cat "$GATE_REPORT_DIR/gitleaks.exit")" == 0 ]]; then
+  if [[ ! -f "$GATE_REPORT_DIR/gitleaks.json" ]] || [[ "$(tr -d '[:space:]' < "$GATE_REPORT_DIR/gitleaks.json")" == null ]]; then
+    printf '[]\n' > "$GATE_REPORT_DIR/gitleaks.json"
+  fi
 fi
 
 scan semgrep "$GATE_TOOLS_BIN/semgrep" scan "$SOURCE_DIR" \
