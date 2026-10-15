@@ -1,6 +1,10 @@
 name: Dzvin dev real QA1 QA2 company gate
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/dzvin-qa1-qa2-company-gate.yml
 permissions:
   contents: read
 concurrency:
@@ -8,7 +12,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   qa-company-isolation:
-    if: github.event.repository.private == false
+    if: github.event.repository.private == false && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
