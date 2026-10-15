@@ -1,11 +1,9 @@
 name: Doctor P1 pinned staging smoke
 run-name: Doctor P1 staging a21bc8ec external smoke
 on:
-  push:
-    branches: [test/doctor-p1-repair-staging-20261015]
-    paths:
-      - .github/workflows/doctor-p1-repair-stage.yml
-      - scripts/doctor_p1_repair_stage.mjs
+  # The staging service was removed after successful external smoke.
+  # Never rerun credentials or point to stale temporary environments.
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
