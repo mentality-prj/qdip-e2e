@@ -1,0 +1,69 @@
+name: Doctor P1 audit production three-identity release gate
+on:
+  push:
+    branches: [test/doctor-p1-audit-release-20261015]
+    paths:
+      - .github/workflows/doctor-p1-audit-release-once.yml
+permissions:
+  contents: read
+jobs:
+  live-production-gate:
+    if: github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check real QA1/TEST1 binding and authorized account present
+        env:
+          QA1_LOGIN: ${{ secrets.QDIP_E2E_ZITADEL_TEST1_LOGIN }}
+          QA1_PASSWORD_PRESENT: ${{ secrets.QDIP_E2E_ZITADEL_TEST1_PASSWORD != '' }}
+          AUTH_LOGIN_PRESENT: ${{ secrets.QDIP_E2E_ZITADEL_TEST_LOGIN != '' }}
+          AUTH_PASSWORD_PRESENT: ${{ secrets.QDIP_E2E_ZITADEL_TEST_PASSWORD != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${QA1_LOGIN,,}" != "qa1@qdip.ai" ] || [ "$QA1_PASSWORD_PRESENT" != "true" ]; then
+            echo 'DOCTOR_P1_QA1_RELEASE_IDENTITY=BLOCKED'
+            exit 2
+          fi
+          if [ "$AUTH_LOGIN_PRESENT" != "true" ] || [ "$AUTH_PASSWORD_PRESENT" != "true" ]; then
+            echo 'DOCTOR_P1_AUTHORIZED_RELEASE_IDENTITY=BLOCKED'
+            exit 2
+          fi
+          echo 'DOCTOR_P1_BOTH_TEST_IDENTITIES=BOUND'
+      - name: Validate all independent E2E scripts
+        run: |
+          node --check scripts/doctor_p1_audit_stage.mjs
+          node --check scripts/doctor_roleless_qa1_live.mjs
+          node --check scripts/doctor_p1_repair_live_user.mjs
+      - name: Install isolated Chromium
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/doctor-p1-audit-release
+          cp scripts/doctor_p1_audit_stage.mjs scripts/doctor_roleless_qa1_live.mjs scripts/doctor_p1_repair_live_user.mjs /tmp/doctor-p1-audit-release/
+          cd /tmp/doctor-p1-audit-release
+          npm init -y >/dev/null
+          npm install --no-save --ignore-scripts @playwright/test@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Production anonymous OAuth/CSRF negative HTTP audit
+        run: |
+          cd /tmp/doctor-p1-audit-release
+          node doctor_p1_audit_stage.mjs
+      - name: Real roleless Zitadel QA1 cannot create Doctor session
+        env:
+          QDIP_E2E_ZITADEL_QA1_PASSWORD: ${{ secrets.QDIP_E2E_ZITADEL_TEST1_PASSWORD }}
+        run: |
+          cd /tmp/doctor-p1-audit-release
+          node doctor_roleless_qa1_live.mjs
+      - name: Real authorized Zitadel user can run all CP-SAT and repair workflows
+        env:
+          QDIP_E2E_ZITADEL_TEST_LOGIN: ${{ secrets.QDIP_E2E_ZITADEL_TEST_LOGIN }}
+          QDIP_E2E_ZITADEL_TEST_PASSWORD: ${{ secrets.QDIP_E2E_ZITADEL_TEST_PASSWORD }}
+        run: |
+          cd /tmp/doctor-p1-audit-release
+          node doctor_p1_repair_live_user.mjs
