@@ -3,7 +3,7 @@
  * This does not qualify a positive Zitadel browser session.
  */
 const BASE = "https://doctor-p1-repair-staging-20261015-production.up.railway.app";
-const SHA = "a21bc8ec27354ee2da854a0fcd244731ba58b8ec";
+const SHA = "8e6f4a9f06f30e926cfe7bfaf513445aa37d333f";
 const assert = (predicate, key) => {
   if (!predicate) throw Error(key);
   console.log("DOCTOR_P1_STAGE_" + key + "=PASS");
