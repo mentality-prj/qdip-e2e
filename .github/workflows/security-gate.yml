@@ -68,12 +68,22 @@ jobs:
       - name: Validate target allowlist and ref before accessing secrets
         run: node suite/scripts/security_gate.mjs validate-input
 
+      - name: Require dedicated read-only security token
+        shell: bash
+        env:
+          SECURITY_READ_TOKEN: ${{ secrets.QDIP_SECURITY_READ_TOKEN }}
+        run: |
+          if [[ -z "$SECURITY_READ_TOKEN" ]]; then
+            echo "::error::QDIP_SECURITY_READ_TOKEN is not configured in qdip-e2e Actions secrets"
+            exit 1
+          fi
+
       - name: Checkout private source at requested revision, read-only
         uses: actions/checkout@v4
         with:
           repository: ${{ inputs.target == 'vhv' && 'qdip-ai/qdip-personal-secretary' || inputs.target == 'core' && 'qdip-ai/qdip-core' || inputs.target == 'web' && 'qdip-ai/qdip-web' || 'qdip-ai/qdip-model-doctor' }}
           ref: ${{ inputs.source_ref }}
-          token: ${{ secrets.QDIP_READ_TOKEN }}
+          token: ${{ secrets.QDIP_SECURITY_READ_TOKEN }}
           path: target
           persist-credentials: false
 

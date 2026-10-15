@@ -14,10 +14,13 @@ Claude API or other AI inference endpoints and requires **no AI API key**.
    `web` or `doctor`.
 3. Supply `source_ref`: preferably a full immutable 40-character commit SHA.
    For a branch, also set `expected_sha` to prevent moving-ref ambiguity.
-4. Existing `QDIP_READ_TOKEN` in **qdip-e2e repository secrets** must have
-   read-only Contents permission on the selected private source repo. The
-   token cannot be read from GitHub UI; checkout/preflight confirms its use
-   without printing the credential.
+4. Add the fine-grained personal access token as **qdip-e2e → Settings →
+   Secrets and variables → Actions → Repository secrets** named
+   `QDIP_SECURITY_READ_TOKEN`. Grant the token read-only Contents permission
+   on the selected private source repository. The GitHub workflow checks
+   whether the secret is configured without printing its value; checkout
+   verifies whether the access works. Existing secrets are not readable from
+   the GitHub UI.
 
 The workflow records exact Git commit SHA, confirms clean source worktree,
 and runs only the following trusted scanners. No `npm install`, build,
