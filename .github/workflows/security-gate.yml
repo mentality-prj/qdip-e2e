@@ -1,0 +1,130 @@
+name: QDIP Cloudflare Security Gate
+run-name: Security Gate ${{ inputs.target }} @ ${{ inputs.source_ref }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Allowlisted QDIP source repository"
+        type: choice
+        required: true
+        options: [vhv, core, web, doctor]
+        default: vhv
+      source_ref:
+        description: "Branch or exact commit SHA to audit (prefer immutable SHA)"
+        type: string
+        required: true
+        default: dev
+      expected_sha:
+        description: "Optional expected 40-character SHA; refuse changed/mismatched ref"
+        type: string
+        required: false
+
+# Deliberately NO push, pull_request, schedule, or third-party dispatch:
+# AI usage may be billed to the qdip-ai organization and runs only by manual opt-in.
+permissions:
+  contents: read
+
+concurrency:
+  group: security-gate-${{ inputs.target }}-${{ inputs.source_ref }}
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    if: github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      copilot-requests: write
+    env:
+      SECURITY_TARGET: ${{ inputs.target }}
+      SOURCE_REF: ${{ inputs.source_ref }}
+      EXPECTED_SHA: ${{ inputs.expected_sha }}
+      SKILL_SHA: c1c8a8c1471069fb0e188eeaff69b8e8db6564a8
+      GATE_REPORT_DIR: ${{ runner.temp }}/qdip-security-private/report
+      SANITIZED_DIR: ${{ runner.temp }}/qdip-security-public
+      SOURCE_DIR: ${{ github.workspace }}/target
+      SKILL_DIR: ${{ runner.temp }}/qdip-skills/security-audit
+    steps:
+      - name: Checkout public E2E gate code
+        uses: actions/checkout@v4
+        with:
+          path: suite
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Validate allowlisted repository and expected SHA
+        run: node suite/scripts/security_gate.mjs validate-input
+
+      - name: Read-only checkout of private source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.target == 'vhv' && 'qdip-ai/qdip-personal-secretary' || inputs.target == 'core' && 'qdip-ai/qdip-core' || inputs.target == 'web' && 'qdip-ai/qdip-web' || 'qdip-ai/qdip-model-doctor' }}
+          ref: ${{ inputs.source_ref }}
+          token: ${{ secrets.QDIP_READ_TOKEN }}
+          path: target
+          persist-credentials: false
+
+      - name: Checkout pinned Cloudflare Security Audit Skill
+        uses: actions/checkout@v4
+        with:
+          repository: cloudflare/security-audit-skill
+          ref: c1c8a8c1471069fb0e188eeaff69b8e8db6564a8
+          path: upstream-skill
+          persist-credentials: false
+
+      - name: Stage pinned skill outside source repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C upstream-skill rev-parse HEAD)" = "$SKILL_SHA"
+          mkdir -p "$RUNNER_TEMP/qdip-skills" "$GATE_REPORT_DIR" "$SANITIZED_DIR"
+          cp -R upstream-skill/skills/security-audit "$SKILL_DIR"
+          test -f "$SKILL_DIR/SKILL.md"
+          test -f "$SKILL_DIR/validate-findings.cjs"
+          test -f "$SKILL_DIR/validate-coverage-ledger.cjs"
+          test -z "$(git -C target status --porcelain)"
+
+      - name: Install GitHub Copilot CLI (no source dependencies)
+        run: npm install --global @github/copilot
+
+      - name: Run full six-phase Cloudflare audit with read-only agent tools
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          COPILOT_SKILLS_DIRS: ${{ runner.temp }}/qdip-skills
+        run: |
+          set -uo pipefail
+          # Never stream private source traces, findings or full prompts to public logs.
+          # No shell tools for the agent: no target build, tests, arbitrary code or outbound curl.
+          prompt="Use /security-audit from $SKILL_DIR in FULL SIX-PHASE AUDIT MODE (not guidance mode) on this repository at the checked-out immutable HEAD. Write run-metadata.json, architecture.md, coverage-ledger.json, findings.json, REPORT.md, FINDINGS-DETAIL.md and NEEDS-VALIDATION.md to $GATE_REPORT_DIR outside the source worktree. Delegate independent hunter/validator/reviewer agents and record coverage honestly. The agent MUST NOT run target-controlled code, shell commands, tests, or fetch external URLs; there is no approved OS sandbox for untrusted execution. Any unvalidated dynamic exploit must remain needs_validation. Do not alter this repository, access external services, post issues, or print sensitive material. This is a source-only audit; run no commands. Follow all six phases and produce machine-valid Cloudflare artifacts. Validation scripts will be run externally after your session."
+          cd target
+          copilot -p "$prompt" -s \
+            --max-ai-credits 30 \
+            --add-dir "$GATE_REPORT_DIR" \
+            --add-dir "$SKILL_DIR" \
+            --allow-tool='read,write' \
+            --deny-tool='shell,url' \
+            --excluded-tools='web_fetch,web_search' \
+            > "$RUNNER_TEMP/qdip-copilot-private.log" 2>&1
+          code=$?
+          echo "AGENT_EXIT_CODE=$code" >> "$GITHUB_ENV"
+          echo "Agent process ended (exit=$code); private transcript suppressed."
+          exit 0
+
+      - name: Evaluate machine-readable evidence (fail closed)
+        if: always()
+        run: node suite/scripts/security_gate.mjs evaluate
+
+      - name: Publish sanitized verdict ONLY (safe in public qdip-e2e)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qdip-cloudflare-security-gate-verdict
+          path: ${{ runner.temp }}/qdip-security-public/verdict.json
+          if-no-files-found: warn
+          retention-days: 14
