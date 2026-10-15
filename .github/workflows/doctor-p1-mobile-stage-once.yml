@@ -27,6 +27,8 @@ jobs:
           npm install --no-save --ignore-scripts @playwright/test@1.56.1
           npx playwright install --with-deps chromium
       - name: Actual mobile browser and keyboard verification
+        env:
+          DOCTOR_P1_A11Y_URL: https://doctor-p1-mobile-stage-20261015-production.up.railway.app
         run: |
           cd /tmp/doctor-p1-mobile
           node doctor_p1_mobile_stage.mjs
