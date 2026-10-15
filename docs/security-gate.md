@@ -1,55 +1,78 @@
-# QDIP Cloudflare Security Gate v1
+# QDIP Independent Security Gate (no mandatory AI or additional AI billing)
 
-Action: **Actions → QDIP Cloudflare Security Gate → Run workflow** in `qdip-ai/qdip-e2e`.
+Workflow: [QDIP Independent Security Gate](../.github/workflows/security-gate.yml)
+in the **public** `qdip-ai/qdip-e2e` repository.
 
-This is a **manual, non-merge-gating release-security review**, separate from existing
-E2E CI. No scheduled/push/PR triggers and no write permission to private sources.
-The source checkout and Cloudflare skill are pinned to recorded immutable SHAs.
-The skill version is `c1c8a8c1471069fb0e188eeaff69b8e8db6564a8`.
-The action runs the actual six-phase skill via GitHub Copilot CLI and validates
-its JSON outputs with the exact upstream validators, without marking missing work PASS.
+This is a **manual** pre-release **static security check**. It is not part
+of push/PR CI in private repositories. It does not call Copilot, Gemini,
+Claude API or other AI inference endpoints and requires **no AI API key**.
 
-## Run inputs
+## Run from GitHub Actions
 
-- `target`: `vhv` (`qdip-ai/qdip-personal-secretary`), `core`, `web` or `doctor`.
-- `source_ref`: source branch/commit, preferably a **full immutable SHA**. For VHV
-  PR #47 at implementation time, `84882b4a104496072b7666e146153424d19eb5f4`.
-- `expected_sha`: optional full SHA; set this when auditing a branch to reject drift.
-- Credential: `QDIP_READ_TOKEN` in `qdip-e2e` Actions secrets requires
-  **Contents: read** on the selected private repository. It is never exposed to
-  the Copilot CLI step or to uploaded evidence.
-- Copilot CLI uses the built-in `GITHUB_TOKEN` with `copilot-requests: write`.
-  This works only if the QDIP organization allows Copilot CLI requests billed to it.
-  **Not a free guarantee**: this workflow can incur AI-credit charges. It is
-  intentionally manual and sets `--max-ai-credits 30` (soft cost cap; currently
-  at least 30 AI credits required by GitHub; credit is $0.01 USD).
+1. Actions → **QDIP Independent Security Gate** → Run workflow.
+2. Choose `target`: `vhv` (`qdip-ai/qdip-personal-secretary`), `core`,
+   `web` or `doctor`.
+3. Supply `source_ref`: preferably a full immutable 40-character commit SHA.
+   For a branch, also set `expected_sha` to prevent moving-ref ambiguity.
+4. Existing `QDIP_READ_TOKEN` in **qdip-e2e repository secrets** must have
+   read-only Contents permission on the selected private source repo. The
+   token cannot be read from GitHub UI; checkout/preflight confirms its use
+   without printing the credential.
 
-## Security and result semantics
+The workflow records exact Git commit SHA, confirms clean source worktree,
+and runs only the following trusted scanners. No `npm install`, build,
+project tests, project scripts or untrusted source-controlled hooks execute.
 
-The public E2E repository does **not** store detailed findings, source snippets,
-agent transcripts, attack paths, PII, or private full audit reports. These stay
-only in the temporary hosted runner and are destroyed with it. A sanitized
-`verdict.json` artifact contains only source SHA, skill SHA, status, counts and
-completeness flags; retain for 14 days. **Never upload raw findings to public
-Actions artifacts or public Issues.** Private finding triage/report retention
-requires a separate explicitly approved secure storage path.
+| Tool | Purpose | Policy |
+| --- | --- | --- |
+| Gitleaks v8.24.3 | Working-tree credential patterns | Any finding BLOCKED |
+| Semgrep OSS v1.134.0 | Small local ruleset (`security/semgrep.yml`) | ERROR BLOCKED; WARNING report-only |
+| Trivy via pinned official Action v0.36.0 | Dependency vulnerabilities and configuration | HIGH/CRITICAL BLOCKED |
 
-- `PASS`: all required reports exist, both upstream schema validators pass,
-  source HEAD matches expected SHA, worktree untouched, Copilot finished, no
-  unresolved leads, and coverage ledger contains no incomplete units or
-  confirmed high/critical findings. PASS is a source-audit outcome only, **not**
-  a substitute for live PostgreSQL/GDPR/Zitadel E2E, secrets/SAST scans or
-  production authorization.
-- `BLOCKED`: complete validated audit with confirmed high/critical findings.
-- `INCOMPLETE`: agent/model/policy failure, missing report, malformed JSON,
-  missing coverage, stale/dirty source, unresolved candidates, or incomplete units.
+**This is not exhaustive SAST**: local Semgrep rules are deliberately small,
+Trivy DB coverage depends on package ecosystems, and Gitleaks scans the
+checked-out working tree, not the full Git history. Future rules are reviewed
+and versioned in this E2E repository. Scanners download their public tool
+packages / vulnerability databases. GitHub Actions runner time and network
+quotas still apply; only *extra AI inference billing* is eliminated.
 
-Both `BLOCKED` and `INCOMPLETE` fail the Action, without blocking private-repo
-development CI or merge. The agent has **no shell or network tools** and may not
-execute target-controlled code. Without a separately provisioned OS-enforced
-sandbox, dynamic exploitation cannot be marked confirmed; evidence requiring
-execution remains `needs_validation`. This deliberate fail-closed mode is
-a code-only audit, **not the complete production release decision**.
+## Results and privacy boundary
 
-For VHV irreversible GDPR erase, require isolated PostgreSQL qualification and
-negative authenticated E2E in addition to this Action before release.
+- **PASS**: all three scanners completed, source SHA/worktree validated, no
+  findings triggering the static policy. It means **static checks only**.
+- **BLOCKED**: static scanners report a policy-blocking secret, high severity
+  SAST finding, HIGH/CRITICAL dependency advisory or misconfiguration.
+  Scanner findings need human triage; do not call them independently confirmed.
+- **INCOMPLETE**: missing token/checkout, scanner crash, missing/invalid output,
+  moved source ref, changed worktree or incomplete evidence.
+
+Both BLOCKED and INCOMPLETE fail the workflow but do **not** block private
+repository development. The public Actions artifact contains ONLY a minimal
+`verdict.json` with SHA, statuses, and counts, and never raw private code,
+credential matches, paths, private audit reports or scanner transcripts.
+Those are retained only temporarily within the ephemeral Actions runner and
+are discarded when it ends. Remediation requires a separate secure private
+review mechanism or rerun in a secure developer workspace.
+
+`ai_audit: NOT_RUN` and `production_qualified: false` are always explicit.
+A static PASS **cannot** certify a production release or GDPR compliance.
+VHV deletion release still requires isolated PostgreSQL + negative authorized
+Zitadel E2E, backup/lifecycle review, and an explicit human release decision.
+
+## Optional Cloudflare Skill audit using existing Claude setup
+
+The independent [Cloudflare Security Audit Skill](https://github.com/cloudflare/security-audit-skill)
+remains **optional**. Run its six-phase assessment separately using an existing
+Claude environment when acceptable under code-sharing policies. The skill
+requires an AI agent for a full audit; the deterministic workflow does **not**
+pretend to run those phases.
+
+A secure local/private workspace may call
+`node scripts/security_gate.mjs evaluate` with `SECURITY_TARGET`,
+`SOURCE_REF`, `EXPECTED_SHA`, `SKILL_SHA`, `SOURCE_DIR`,
+`SKILL_DIR`, `GATE_REPORT_DIR` and `SANITIZED_DIR` after receiving
+the seven required private audit files. This optional evaluator uses the
+upstream Cloudflare JSON validators and reports PASS/BLOCKED/INCOMPLETE
+for the **separate AI audit only**. It does not modify or inflate the
+deterministic workflow outcome; never upload its detailed reports into
+public qdip-e2e artifacts. No AI provider is automatically installed.

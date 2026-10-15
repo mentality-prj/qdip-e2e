@@ -8,13 +8,14 @@ on:
       - 'scripts/**'
       - 'tests/**'
       - 'fixtures/**'
+      - 'security/**'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: qdip-e2e-static-lint
+  group: qdip-e2e-static-lint-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -51,8 +52,8 @@ jobs:
           node --check scripts/mock_zitadel.mjs
           node --experimental-strip-types --check scripts/rr_oidc_exchange_browser.spec.ts
           node --experimental-strip-types --check scripts/rr_oidc_exchange_playwright.config.ts
-      - name: Validate Cloudflare Security Gate verdict and input controls
-        run: node --test tests/security_gate.test.mjs
+      - name: Validate optional Cloudflare report evaluator and deterministic Security Gate
+        run: node --test tests/security_gate.test.mjs tests/deterministic_security_gate.test.mjs
       - name: Validate fail-closed browser result checker
         run: python -m unittest discover -s scripts -p 'test_e2e_*.py' -v
       - name: Validate SHA-pinned watcher and stale-run result isolation

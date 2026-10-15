@@ -1,63 +1,74 @@
-name: QDIP Cloudflare Security Gate
-run-name: Security Gate ${{ inputs.target }} @ ${{ inputs.source_ref }}
+name: QDIP Independent Security Gate
+run-name: Static Security Gate ${{ inputs.target }} @ ${{ inputs.source_ref }}
 
 on:
   workflow_dispatch:
     inputs:
       target:
-        description: "Allowlisted QDIP source repository"
+        description: "Allowlisted QDIP repository"
         type: choice
         required: true
         options: [vhv, core, web, doctor]
         default: vhv
       source_ref:
-        description: "Branch or exact commit SHA to audit (prefer immutable SHA)"
+        description: "Source ref / 40-char SHA (use immutable SHA for release qualification)"
         type: string
         required: true
         default: dev
       expected_sha:
-        description: "Optional expected 40-character SHA; refuse changed/mismatched ref"
+        description: "Optional exact 40-char source SHA; refuse a mismatched source ref"
         type: string
         required: false
 
-# Deliberately NO push, pull_request, schedule, or third-party dispatch:
-# AI usage may be billed to the qdip-ai organization and runs only by manual opt-in.
+# Explicit manual-only gate. Never runs AI or installs/executes target source code.
+# GitHub-hosted Actions and vulnerability DB downloads may still consume runner/network quotas.
 permissions:
   contents: read
 
 concurrency:
-  group: security-gate-${{ inputs.target }}-${{ inputs.source_ref }}
+  group: qdip-static-security-${{ inputs.target }}-${{ inputs.source_ref }}
   cancel-in-progress: false
 
 jobs:
-  audit:
+  deterministic-audit:
     if: github.event.repository.private == false
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 45
     permissions:
       contents: read
-      copilot-requests: write
     env:
       SECURITY_TARGET: ${{ inputs.target }}
       SOURCE_REF: ${{ inputs.source_ref }}
       EXPECTED_SHA: ${{ inputs.expected_sha }}
-      SKILL_SHA: c1c8a8c1471069fb0e188eeaff69b8e8db6564a8
       SOURCE_DIR: ${{ github.workspace }}/target
     steps:
-      - name: Checkout public E2E gate code
+      - name: Checkout public independent E2E security tooling
         uses: actions/checkout@v4
         with:
           path: suite
           persist-credentials: false
 
+      - name: Initialize private report workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "GATE_REPORT_DIR=$RUNNER_TEMP/qdip-security-private"
+            echo "SANITIZED_DIR=$RUNNER_TEMP/qdip-security-public"
+            echo "GATE_TOOLS_BIN=$RUNNER_TEMP/qdip-security-bin"
+            echo "GATE_SEMGREP_CONFIG=$GITHUB_WORKSPACE/suite/security/semgrep.yml"
+          } >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/qdip-security-private" "$RUNNER_TEMP/qdip-security-public" "$RUNNER_TEMP/qdip-security-bin"
+          chmod 700 "$RUNNER_TEMP/qdip-security-private" "$RUNNER_TEMP/qdip-security-public"
+
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
 
-      - name: Validate allowlisted repository and expected SHA
+      - name: Validate target allowlist and ref before accessing secrets
         run: node suite/scripts/security_gate.mjs validate-input
 
-      - name: Read-only checkout of private source
+      - name: Checkout private source at requested revision, read-only
         uses: actions/checkout@v4
         with:
           repository: ${{ inputs.target == 'vhv' && 'qdip-ai/qdip-personal-secretary' || inputs.target == 'core' && 'qdip-ai/qdip-core' || inputs.target == 'web' && 'qdip-ai/qdip-web' || 'qdip-ai/qdip-model-doctor' }}
@@ -66,71 +77,77 @@ jobs:
           path: target
           persist-credentials: false
 
-      - name: Checkout pinned Cloudflare Security Audit Skill
-        uses: actions/checkout@v4
-        with:
-          repository: cloudflare/security-audit-skill
-          ref: c1c8a8c1471069fb0e188eeaff69b8e8db6564a8
-          path: upstream-skill
-          persist-credentials: false
-
-      - name: Define runner-only gate paths
-        run: |
-          {
-            echo "GATE_REPORT_DIR=$RUNNER_TEMP/qdip-security-private/report"
-            echo "SANITIZED_DIR=$RUNNER_TEMP/qdip-security-public"
-            echo "SKILL_DIR=$RUNNER_TEMP/qdip-skills/security-audit"
-          } >> "$GITHUB_ENV"
-
-      - name: Stage pinned skill outside source repository
+      - name: Refuse stale source SHA and dirty checkout before scanning
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git -C upstream-skill rev-parse HEAD)" = "$SKILL_SHA"
-          mkdir -p "$RUNNER_TEMP/qdip-skills" "$GATE_REPORT_DIR" "$SANITIZED_DIR"
-          cp -R upstream-skill/skills/security-audit "$SKILL_DIR"
-          test -f "$SKILL_DIR/SKILL.md"
-          test -f "$SKILL_DIR/validate-findings.cjs"
-          test -f "$SKILL_DIR/validate-coverage-ledger.cjs"
+          actual="$(git -C target rev-parse HEAD)"
+          if [[ -n "$EXPECTED_SHA" ]] && [[ "$actual" != "$EXPECTED_SHA" ]]; then
+            echo "Expected SHA mismatch; refusing scan"
+            exit 1
+          fi
           test -z "$(git -C target status --porcelain)"
-          echo "CHECKED_OUT_SHA=$(git -C target rev-parse HEAD)" >> "$GITHUB_ENV"
 
-      - name: Install GitHub Copilot CLI (no source dependencies)
-        run: npm install --global @github/copilot
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.4'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
 
-      - name: Run full six-phase Cloudflare audit with read-only agent tools
+      - name: Install pinned OSS Gitleaks and Semgrep (not source packages)
         shell: bash
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          COPILOT_SKILLS_DIRS: ${{ runner.temp }}/qdip-skills
         run: |
-          set -uo pipefail
-          # Never stream private source traces, findings or full prompts to public logs.
-          # No shell tools for the agent: no target build, tests, arbitrary code or outbound curl.
-          prompt="Use /security-audit from $SKILL_DIR in FULL SIX-PHASE AUDIT MODE (not guidance mode) on this repository at the checked-out immutable HEAD ($CHECKED_OUT_SHA). Include exactly this SHA in run-metadata.json source_ref and set run_status=complete only after final verification and reports. Write run-metadata.json, architecture.md, coverage-ledger.json, findings.json, REPORT.md, FINDINGS-DETAIL.md and NEEDS-VALIDATION.md to $GATE_REPORT_DIR outside the source worktree. Delegate independent hunter/validator/reviewer agents and record coverage honestly. The agent MUST NOT run target-controlled code, shell commands, tests, or fetch external URLs; there is no approved OS sandbox for untrusted execution. Any unvalidated dynamic exploit must remain needs_validation. Do not alter this repository, access external services, post issues, or print sensitive material. This is a source-only audit; run no commands. Follow all six phases and produce machine-valid Cloudflare artifacts. Validation scripts will be run externally after your session."
-          cd target
-          copilot -p "$prompt" -s \
-            --max-ai-credits 30 \
-            --add-dir "$GATE_REPORT_DIR" \
-            --add-dir "$SKILL_DIR" \
-            --allow-tool='read,write' \
-            --deny-tool='shell,url' \
-            --excluded-tools='web_fetch,web_search' \
-            > "$RUNNER_TEMP/qdip-copilot-private.log" 2>&1
-          code=$?
-          echo "AGENT_EXIT_CODE=$code" >> "$GITHUB_ENV"
-          echo "Agent process ended (exit=$code); private transcript suppressed."
-          exit 0
+          set -euo pipefail
+          export GOBIN="$GATE_TOOLS_BIN"
+          go install github.com/zricethezav/gitleaks/v8@v8.24.3 > "$GATE_REPORT_DIR/gitleaks-install.private.log" 2>&1
+          python -m venv "$RUNNER_TEMP/qdip-security-venv"
+          "$RUNNER_TEMP/qdip-security-venv/bin/python" -m pip install --disable-pip-version-check --no-input semgrep==1.134.0 > "$GATE_REPORT_DIR/semgrep-install.private.log" 2>&1
+          ln -s "$RUNNER_TEMP/qdip-security-venv/bin/semgrep" "$GATE_TOOLS_BIN/semgrep"
+          test -x "$GATE_TOOLS_BIN/gitleaks"
+          test -x "$GATE_TOOLS_BIN/semgrep"
 
-      - name: Evaluate machine-readable evidence (fail closed)
+      - name: Run Gitleaks secrets and local Semgrep SAST
+        shell: bash
+        run: bash suite/scripts/run_security_scans.sh
+
+      - name: Scan dependency manifests and configuration via pinned Trivy
+        id: trivy
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        continue-on-error: true
+        with:
+          scan-type: 'fs'
+          version: 'v0.70.0'
+          scan-ref: 'target'
+          scanners: 'vuln,misconfig'
+          format: 'json'
+          output: ${{ runner.temp }}/qdip-security-private/trivy.json
+          exit-code: '0'
+          severity: 'UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL'
+        env:
+          TRIVY_DISABLE_TELEMETRY: 'true'
+          TRIVY_OFFLINE_SCAN: 'true'
+
+      - name: Record scanner completion without leaking reports
         if: always()
-        run: node suite/scripts/security_gate.mjs evaluate
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ steps.trivy.outcome }}" == success ]] && [[ -s "$GATE_REPORT_DIR/trivy.json" ]]; then
+            printf '0\n' > "$GATE_REPORT_DIR/trivy.exit"
+          else
+            printf '99\n' > "$GATE_REPORT_DIR/trivy.exit"
+          fi
 
-      - name: Publish sanitized verdict ONLY (safe in public qdip-e2e)
+      - name: Evaluate source-bound deterministic evidence (fail closed)
+        if: always()
+        run: node suite/scripts/deterministic_security_gate.mjs
+
+      - name: Upload sanitized public verdict only
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: qdip-cloudflare-security-gate-verdict
+          name: qdip-deterministic-security-verdict
           path: ${{ runner.temp }}/qdip-security-public/verdict.json
           if-no-files-found: warn
           retention-days: 14
