@@ -192,7 +192,10 @@ test('signed RR role with wrong project, organization, issuer or expiry is denie
     mark('negative-global-authenticated', identity.authenticated)
     expect(identity.configured).toBe(true)
     expect(identity.operator).toBe(false)
-    expect(identity.authenticated).toBe(changed.roles?.[0] === 'studio')
+    // OIDC authentication is separate from RR role authorization. A signed
+    // identity with zero roles remains authenticated, but cannot operate RR.
+    // Invalid issuer/project/org/expiry must invalidate the entire session.
+    expect(identity.authenticated).toBe(changed.roles !== undefined)
     const rr = await page.request.get(`${ORIGIN}/api/rr-operator/session`)
     mark('negative-rr-http', rr.status())
     expect(rr.status()).toBe(200)
