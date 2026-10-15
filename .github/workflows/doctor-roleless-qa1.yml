@@ -1,9 +1,5 @@
 name: Doctor QA1 real roleless authorization E2E
 on:
-  push:
-    branches: [test/doctor-roleless-qa1-20261015]
-    paths:
-      - .github/workflows/doctor-roleless-qa1.yml
   workflow_dispatch:
 permissions:
   contents: read
@@ -24,6 +20,33 @@ jobs:
           node-version: '22'
       - name: Syntax and no-credentials static gate
         run: node --check scripts/doctor_roleless_qa1_live.mjs
+      - name: Fail closed if no exactly one QA1 password secret is bound
+        env:
+          SECRET_BOUND_1: ${{ secrets.QDIP_E2E_ZITADEL_QA1_PASSWORD != '' }}
+          SECRET_BOUND_2: ${{ secrets.QA1_PASSWORD != '' }}
+          SECRET_BOUND_3: ${{ secrets.QDIP_QA1_PASSWORD != '' }}
+          SECRET_BOUND_4: ${{ secrets.ZITADEL_QA1_TEST_PASSWORD != '' }}
+          SECRET_BOUND_5: ${{ secrets.QA1_ZITADEL_TEST_PASSWORD != '' }}
+          SECRET_BOUND_6: ${{ secrets.QDIP_E2E_QA1_ZITADEL_PASSWORD != '' }}
+          SECRET_BOUND_7: ${{ secrets.QDIP_E2E_ZITADEL_QA1_USER_PASSWORD != '' }}
+          SECRET_BOUND_8: ${{ secrets.QDIP_E2E_ZITADEL_TEST_PASSWORD_QA1 != '' }}
+          SECRET_BOUND_9: ${{ secrets.QDIP_E2E_ZITADEL_QA1_TEST_PASSWORD != '' }}
+          SECRET_BOUND_10: ${{ secrets.QDIP_E2E_ZITADEL_ROLELESS_PASSWORD != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          count=0
+          for i in $(seq 1 10); do
+            key="SECRET_BOUND_$i"
+            if [ "${!key}" = "true" ]; then
+              count=$((count+1))
+            fi
+          done
+          if [ "$count" -ne 1 ]; then
+            echo "DOCTOR_QA1_SECRET_BINDING=BLOCKED"
+            exit 2
+          fi
+          echo "DOCTOR_QA1_SECRET_BINDING=PASS"
       - name: Install isolated Chromium
         run: |
           set -euo pipefail
