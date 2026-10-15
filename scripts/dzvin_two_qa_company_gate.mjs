@@ -374,6 +374,7 @@ async function assertGate3DeniedForMember(actor, label) {
     "/api/backend/dip-admin/organizations",
     "/api/backend/dip-admin/organizations/qdip-gate3-probe/keys",
     "/api/backend/dip-admin/organizations/qdip-gate3-probe/audit?limit=1",
+    "/api/backend/dip-admin/mutations/reconciliation?limit=1",
   ];
   for (const path of paths) {
     const response = await actor.context.request.get(SITE + path, {
