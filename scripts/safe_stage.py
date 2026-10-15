@@ -98,7 +98,7 @@ def main() -> int:
         # latency and successful read count may leave this runner.
         source = path.read_text(encoding="utf-8", errors="replace")
         p95 = re.findall(
-            r"^RR_LOAD_P95_MS=([0-9]{1,8}\\.[0-9]{2})$",
+            r"^RR_LOAD_P95_MS=([0-9]{1,8}\.[0-9]{2})$",
             source,
             flags=re.MULTILINE,
         )
