@@ -21,7 +21,10 @@ const viewports = [
 
 async function check(browser, variant) {
   const {width,height,lang}=variant;
+  const mobile=width<=850;
   const context = await browser.newContext({viewport:{width,height},deviceScaleFactor:1,locale:lang==='uk'?'uk-UA':'en-US',
+    isMobile:mobile,hasTouch:mobile,
+    ...(mobile?{userAgent:'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'}:{}),
     reducedMotion:'reduce',colorScheme:'light',storageState:{cookies:[],origins:[]}});
   const page=await context.newPage();
   const errors=[];
@@ -111,8 +114,12 @@ async function check(browser, variant) {
     if(width<=850) {
       assert.ok(dimensions.height>=dimensions.width*1.5,
         'Mobile must use a genuine portrait picture rather than a landscape crop');
-      assert.equal(await page.getByRole('button',{name:/Встановити на телефон|install on phone/i}).count(),0,
-        'Public sign-in should not compete with a secondary install CTA');
+      const install=page.getByRole('button',{name:/Встановити на телефон|install on phone/i}).first();
+      await install.waitFor({state:'visible',timeout:10000});
+      const signInBounds=await button.boundingBox();
+      const installBounds=await install.boundingBox();
+      assert.ok(signInBounds && installBounds && installBounds.y>signInBounds.y+signInBounds.height,
+        'Phone install CTA should appear immediately below real Zitadel sign-in');
     }
 
     const bounds=await page.evaluate(()=>({
