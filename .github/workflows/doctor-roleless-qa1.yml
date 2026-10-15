@@ -1,0 +1,68 @@
+name: Doctor QA1 real roleless authorization E2E
+on:
+  push:
+    branches: [test/doctor-roleless-qa1-20261015]
+    paths:
+      - .github/workflows/doctor-roleless-qa1.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: doctor-qa1-negative-user
+  cancel-in-progress: false
+jobs:
+  roleless-user:
+    if: github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax and no-credentials static gate
+        run: node --check scripts/doctor_roleless_qa1_live.mjs
+      - name: Install isolated Chromium
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/doctor-qa1-negative
+          cp scripts/doctor_roleless_qa1_live.mjs /tmp/doctor-qa1-negative/
+          cd /tmp/doctor-qa1-negative
+          npm init -y >/dev/null
+          npm install --no-save --ignore-scripts @playwright/test@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Real QA1 Zitadel identity and negative Doctor authorization
+        env:
+          QA1_PASS_1: ${{ secrets.QDIP_E2E_ZITADEL_QA1_PASSWORD }}
+          QA1_PASS_2: ${{ secrets.QA1_PASSWORD }}
+          QA1_PASS_3: ${{ secrets.QDIP_QA1_PASSWORD }}
+          QA1_PASS_4: ${{ secrets.ZITADEL_QA1_TEST_PASSWORD }}
+          QA1_PASS_5: ${{ secrets.QA1_ZITADEL_TEST_PASSWORD }}
+          QA1_PASS_6: ${{ secrets.QDIP_E2E_QA1_ZITADEL_PASSWORD }}
+          QA1_PASS_7: ${{ secrets.QDIP_E2E_ZITADEL_QA1_USER_PASSWORD }}
+          QA1_PASS_8: ${{ secrets.QDIP_E2E_ZITADEL_TEST_PASSWORD_QA1 }}
+          QA1_PASS_9: ${{ secrets.QDIP_E2E_ZITADEL_QA1_TEST_PASSWORD }}
+          QA1_PASS_10: ${{ secrets.QDIP_E2E_ZITADEL_ROLELESS_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          count=0
+          selected=""
+          for i in $(seq 1 10); do
+            key="QA1_PASS_$i"
+            if [ -n "${!key:-}" ]; then
+              count=$((count+1))
+              selected="${!key}"
+            fi
+          done
+          if [ "$count" -ne 1 ]; then
+            echo "DOCTOR_QA1_CREDENTIAL_BINDING=NOT_VERIFIED"
+            exit 2
+          fi
+          echo "DOCTOR_QA1_CREDENTIAL_BINDING=PASS"
+          export QDIP_E2E_ZITADEL_QA1_PASSWORD="$selected"
+          unset selected
+          cd /tmp/doctor-qa1-negative
+          node doctor_roleless_qa1_live.mjs
