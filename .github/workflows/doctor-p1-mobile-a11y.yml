@@ -1,0 +1,33 @@
+name: Doctor P1 mobile accessibility (manual)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: doctor-mobile-accessibility
+  cancel-in-progress: false
+jobs:
+  mobile-accessibility:
+    if: github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --check scripts/doctor_p1_mobile_stage.mjs
+      - name: Install isolated Chromium
+        run: |
+          mkdir -p /tmp/doctor-p1-mobile
+          cp scripts/doctor_p1_mobile_stage.mjs /tmp/doctor-p1-mobile/
+          cd /tmp/doctor-p1-mobile
+          npm init -y >/dev/null
+          npm install --no-save --ignore-scripts @playwright/test@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Actual mobile browser and keyboard verification on Doctor production
+        run: |
+          cd /tmp/doctor-p1-mobile
+          node doctor_p1_mobile_stage.mjs
