@@ -26,7 +26,7 @@ function requireStage(value, code) {
 
 function assertPreflight() {
   requireStage(
-    SITE === "https://mentality-web-git-dev-taras-gezs-projects.vercel.app",
+    SITE === "https://mentality-web.vercel.app",
     "DZVIN_DEV_ORIGIN_UNEXPECTED",
   );
   const emails = new Set();
