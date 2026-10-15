@@ -41,3 +41,21 @@ jobs:
           print('DZVIN_DEV_APP_HTML=' + ('YES' if dzvin_html else 'NO'))
           print('DZVIN_DEV_TITLE_CATEGORY=' + ('vercel' if vercel_protected else 'dzvin' if dzvin_html else 'other'))
           PY
+
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Diagnose browser OIDC redirect without account credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/dzvin-public-login
+          cp scripts/dzvin_public_login_preflight.mjs /tmp/dzvin-public-login/
+          cd /tmp/dzvin-public-login
+          npm init -y >/dev/null
+          npm install --no-save --ignore-scripts @playwright/test@1.57.0
+          npx playwright install --with-deps chromium
+          node dzvin_public_login_preflight.mjs
