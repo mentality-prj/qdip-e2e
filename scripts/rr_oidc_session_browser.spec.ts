@@ -179,20 +179,32 @@ test('signed RR role with wrong project, organization, issuer or expiry is denie
     { roles: [] },
     { roles: ['studio'] },
   ]
-  for (const changed of invalid) {
+  for (const [index, changed] of invalid.entries()) {
+    // Only the synthetic case index and boolean/HTTP checks enter public diagnostics.
+    mark('negative-case-code', 200 + index)
     await installIsolatedOidcSession(page, 'rr', changed)
     const global = await page.request.get(`${ORIGIN}/api/auth/session`)
+    mark('negative-global-http', global.status())
     expect(global.status()).toBe(200)
     const identity = (await global.json()) as { configured: boolean; authenticated: boolean; operator: boolean }
+    mark('negative-global-configured', identity.configured)
+    mark('negative-global-operator', identity.operator)
+    mark('negative-global-authenticated', identity.authenticated)
     expect(identity.configured).toBe(true)
     expect(identity.operator).toBe(false)
     expect(identity.authenticated).toBe(changed.roles?.[0] === 'studio')
     const rr = await page.request.get(`${ORIGIN}/api/rr-operator/session`)
+    mark('negative-rr-http', rr.status())
     expect(rr.status()).toBe(200)
-    expect(await rr.json()).toMatchObject({ configured: true, authenticated: false })
+    const rrIdentity = (await rr.json()) as { configured: boolean; authenticated: boolean }
+    mark('negative-rr-configured', rrIdentity.configured)
+    mark('negative-rr-authenticated', rrIdentity.authenticated)
+    expect(rrIdentity).toMatchObject({ configured: true, authenticated: false })
     const denied = await page.request.post(`${ROUTE}/preflight`, { data: {} })
+    mark('negative-preflight-http', denied.status())
     expect(denied.status()).toBe(401)
     const executeDenied = await page.request.post(`${ROUTE}/executions`, { data: {} })
+    mark('negative-execute-http', executeDenied.status())
     expect(executeDenied.status()).toBe(401)
   }
 })
