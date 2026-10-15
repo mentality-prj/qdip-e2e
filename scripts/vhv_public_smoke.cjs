@@ -75,6 +75,16 @@ async function check(browser, variant) {
     assert.ok(await button.isEnabled(),'Zitadel sign-in CTA must be enabled');
     const submit=await button.evaluate(el=>el.closest('form')?.getAttribute('action')!==undefined);
     assert.ok(submit,'Sign-in must remain inside a real form; test must not submit it');
+    // Google's sensitive-scope review requires same-domain public privacy
+    // disclosure linked directly from the anonymous homepage.
+    const privacy=page.getByRole('link',{name:lang==='uk'?/Політика конфіденційності/:/Privacy policy/i}).first();
+    await privacy.waitFor({state:'visible',timeout:10000});
+    assert.equal(await privacy.getAttribute('href'),'/privacy');
+    const privacyResponse=await page.request.get(url+'/privacy',{timeout:15000});
+    assert.equal(privacyResponse.status(),200,'Public privacy policy must not require login');
+    const privacyHtml=await privacyResponse.text();
+    assert.match(privacyHtml,/Раніше погоджені локальні плани|Previously approved local plans/,
+      'Privacy policy must accurately disclose local plans surviving Google disconnect');
 
     const assetName=width<=850?'vhv-hero-mobile.webp':'vhv-hero-desktop.webp';
     if(width<=850) {
