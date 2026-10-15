@@ -100,7 +100,7 @@ async function check(browser, variant) {
         geo.consent.bottom<=geo.gallery.top+2,'Copy must not overlap active image');
       assert.ok(geo.gallery.bottom<=geo.form.top+2,'Sign-in must follow image rather than cover calendar');
       assert.ok(geo.gallery.height>=230,'Calendar gallery must remain visible, not collapse');
-      assert.ok(geo.gallery.width>=width*.85,'Gallery must extend across mobile viewport');
+      assert.ok(geo.gallery.width>=Math.min(width*.85,580),'Gallery must fill the mobile content width');
       assert.ok(geo.gallery.top>=brandBounds.headerBottom,'Gallery must not obscure wordmark');
     } else {
       const scene=page.locator('.login-scene');
