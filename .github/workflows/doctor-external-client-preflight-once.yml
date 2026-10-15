@@ -1,0 +1,21 @@
+name: Doctor new OAuth client registration preflight one-shot
+on:
+  push:
+    branches: [test/doctor-external-client-jwt-real-e2e-20261015]
+    paths: [.github/workflows/doctor-external-client-preflight-once.yml]
+permissions:
+  contents: read
+jobs:
+  preflight:
+    if: github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --check scripts/doctor_external_client_preflight.mjs
+      - run: node scripts/doctor_external_client_preflight.mjs
