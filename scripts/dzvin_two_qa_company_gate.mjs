@@ -127,14 +127,15 @@ async function loginAndResolveCompany(browser, user) {
     });
     requireStage(response.status() === 200, user.name + "_COMPANY_LIST_UNAVAILABLE");
     const companies = await response.json();
-    requireStage(
-      Array.isArray(companies) && companies.length === 1,
-      user.name + "_SINGLE_DISPOSABLE_COMPANY_FIXTURE_MISSING",
-    );
-    const id = companies[0].id;
-    requireStage(/^[a-f0-9]{24}$/i.test(id || ""), user.name + "_COMPANY_ID_INVALID");
-    console.log(user.name + "_SINGLE_COMPANY_MEMBERSHIP=PASS");
-    return { context, subject: session.id, companyId: id };
+    requireStage(Array.isArray(companies), user.name + "_COMPANY_LIST_INVALID");
+    const ids = companies.map(item => item?.id);
+    requireStage(ids.every(id => /^[a-f0-9]{24}$/i.test(id || "")),
+      user.name + "_COMPANY_ID_INVALID");
+    // Emit only a privacy-safe category, never company identifiers or names.
+    const category = ids.length === 0 ? "ZERO" : ids.length === 1 ? "ONE" : "MULTIPLE";
+    console.log(user.name + "_COMPANY_FIXTURE_CATEGORY=" + category);
+    if (ids.length === 1) console.log(user.name + "_SINGLE_COMPANY_MEMBERSHIP=PASS");
+    return { context, subject: session.id, companyId: ids[0] ?? null, companyCount: ids.length };
   } catch (error) {
     await context.close();
     throw error;
@@ -202,6 +203,8 @@ async function main() {
     a = await loginAndResolveCompany(browser, users[0]);
     b = await loginAndResolveCompany(browser, users[1]);
     requireStage(a.subject !== b.subject, "DZVIN_QA_SUBJECTS_NOT_DISTINCT");
+    requireStage(a.companyCount === 1, "QA1_SINGLE_DISPOSABLE_COMPANY_FIXTURE_MISSING");
+    requireStage(b.companyCount === 1, "QA2_SINGLE_DISPOSABLE_COMPANY_FIXTURE_MISSING");
     requireStage(a.companyId !== b.companyId, "DZVIN_QA_COMPANIES_NOT_DISTINCT");
     await denyForeignAccess(a, b.companyId, "QA1");
     await denyForeignAccess(b, a.companyId, "QA2");
