@@ -1,0 +1,23 @@
+name: Doctor P1 audit staging one-shot
+on:
+  push:
+    branches: [test/doctor-p1-audit-staging-20261015]
+    paths:
+      - .github/workflows/doctor-p1-audit-once.yml
+permissions:
+  contents: read
+jobs:
+  audit-smoke:
+    if: github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --check scripts/doctor_p1_audit_stage.mjs
+      - name: Audit stage HTTP adversarial checks
+        run: node scripts/doctor_p1_audit_stage.mjs
