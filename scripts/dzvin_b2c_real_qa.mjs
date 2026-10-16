@@ -146,10 +146,32 @@ async function writeVerifyAndIsolate(a, b, marker) {
   result("QA1_DIARY_SAVE_VISIBLE");
 
   await a.page.reload({ waitUntil: "domcontentloaded" });
-  await a.page.getByText(marker, { exact: true }).waitFor({ timeout: 15000 })
-    .catch(() => { throw new Error("QA1_DIARY_SAVE_NOT_PERSISTED_AFTER_RELOAD"); });
   const ownEntries = await diaries(a.context);
-  requireStage(ownEntries.some((entry) => entry.content === marker && !entry.isActive), "QA1_DIARY_BACKEND_PERSISTENCE_MISSING");
+  const saved = ownEntries.find((entry) => entry.content === marker && !entry.isActive);
+  requireStage(saved, "QA1_DIARY_BACKEND_PERSISTENCE_MISSING");
+  result("QA1_DIARY_BACKEND_PERSISTENCE_AFTER_RELOAD");
+  const hasCreatedAt = typeof saved.createdAt === "string" && Number.isFinite(Date.parse(saved.createdAt));
+  const activeEntries = ownEntries.filter((entry) => !entry.isActive);
+  const sortedEntries = [...activeEntries].sort((a, b) => {
+    const aTime = a.createdAt ? Date.parse(a.createdAt) : 0;
+    const bTime = b.createdAt ? Date.parse(b.createdAt) : 0;
+    return bTime - aTime;
+  });
+  const visibleInFirstPage = sortedEntries.slice(0, 10).some((entry) => entry.content === marker);
+  const visible = await a.page.getByText(marker, { exact: true }).isVisible().catch(() => false);
+  if (!visible) {
+    const historyLoadError = await a.page.getByText("Не вдалося завантажити історію щоденника. Онови сторінку та спробуй ще раз.").isVisible().catch(() => false);
+    const noEntries = await a.page.getByText("У тебе поки немає записів").isVisible().catch(() => false);
+    const filteredEmpty = await a.page.getByText("За вибраними фільтрами записів немає").isVisible().catch(() => false);
+    console.log("QA1_DIARY_RELOAD_DIAGNOSTIC=" + [
+      hasCreatedAt ? "HAS_DATE" : "MISSING_DATE",
+      visibleInFirstPage ? "IN_FIRST_PAGE" : "OUTSIDE_FIRST_PAGE",
+      historyLoadError ? "LOAD_ERROR" : "NO_LOAD_ERROR",
+      noEntries ? "EMPTY_SERVER_STATE" : "NO_EMPTY_SERVER_STATE",
+      filteredEmpty ? "EMPTY_FILTER_STATE" : "NO_EMPTY_FILTER_STATE",
+    ].join("_"));
+    throw new Error("QA1_DIARY_SAVE_NOT_VISIBLE_AFTER_RELOAD");
+  }
   result("QA1_DIARY_PERSISTENCE_AFTER_RELOAD");
 
   const otherEntries = await diaries(b.context);
