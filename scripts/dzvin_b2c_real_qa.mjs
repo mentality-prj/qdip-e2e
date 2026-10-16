@@ -140,65 +140,48 @@ async function diaries(context) {
 async function writeVerifyAndIsolate(a, b, marker) {
   await a.page.goto(SITE + "/uk/diary", { waitUntil: "domcontentloaded" });
   await a.page.locator('textarea[name="note"]').fill(marker);
-  // Record all same-origin diary POST outcomes without logging URL, payload,
-  // credentials, personal content or user identifiers.
-  const observedPostStatuses = [];
-  a.page.on("response", (response) => {
-    try {
-      const url = new URL(response.url());
-      if (response.request().method() === "POST"
-          && url.origin === SITE && url.pathname.includes("diary")) {
-        observedPostStatuses.push(response.status());
-      }
-    } catch { /* Ignore unrelated browser responses. */ }
-  });
-  await a.page.getByRole("button", { name: "Зберегти запис" }).click();
 
-  // An API read after the click is a durable acknowledgment of actual write.
-  // The draft in a textarea is NOT evidence of saving; a failed toast probe
-  // must not hide a successful backend write.
-  let ownEntries = [];
-  let saved;
-  for (let attempt = 0; attempt < 25; attempt++) {
-    ownEntries = await diaries(a.context);
-    saved = ownEntries.find((entry) => entry.content === marker && !entry.isActive);
-    if (saved) break;
-    await a.page.waitForTimeout(500);
+  // The browser POST response, not text still in the editor, is proof of write.
+  const pendingWrite = a.page.waitForResponse((response) => {
+    try {
+      return response.request().method() === "POST"
+        && new URL(response.url()).pathname === "/api/backend/diary";
+    } catch {
+      return false;
+    }
+  }, { timeout: 15000 }).catch(() => null);
+
+  await a.page.getByRole("button", { name: "Зберегти запис" }).click();
+  const response = await pendingWrite;
+  if (!response) {
+    const notAuthenticated = await a.page.getByText(
+      "Необхідно бути зареєстрованим щоб додати запис",
+    ).isVisible().catch(() => false);
+    console.log("QA1_DIARY_AUTH_TOAST=" + String(notAuthenticated));
+    throw new Error("QA1_DIARY_POST_NOT_SENT");
   }
-  console.log("QA1_DIARY_POST_STATUS=" + (observedPostStatuses.join("_") || "NOT_CAPTURED"));
-  console.log("QA1_DIARY_FORM_CLEARED=" + String(await a.page.locator('textarea[name="note"]').inputValue() === ""));
-  requireStage(saved, "QA1_DIARY_BACKEND_PERSISTENCE_MISSING");
-  result("QA1_DIARY_BACKEND_WRITE_CONFIRMED");
+  requireStage(response.status() === 201, "QA1_DIARY_POST_HTTP_" + response.status());
+  result("QA1_DIARY_POST_201");
+
+  await a.page.waitForFunction(() => {
+    const field = document.querySelector('textarea[name="note"]');
+    return field instanceof HTMLTextAreaElement && field.value === "";
+  }, null, { timeout: 15000 }).catch(() => { throw new Error("QA1_DIARY_DRAFT_NOT_CLEARED"); });
+  result("QA1_DIARY_FORM_RESET");
+
+  const entries = await diaries(a.context);
+  const saved = entries.filter((entry) => entry.content === marker && !entry.isActive);
+  requireStage(saved.length === 1, "QA1_DIARY_PERSISTENCE_COUNT_NOT_ONE");
+  result("QA1_DIARY_BACKEND_ONE_RECORD");
+
+  const foreignEntries = await diaries(b.context);
+  requireStage(foreignEntries.every((entry) => entry.content !== marker), "QA2_CAN_READ_QA1_DIARY");
+  result("QA1_QA2_PRIVATE_DIARY_ISOLATION");
 
   await a.page.reload({ waitUntil: "domcontentloaded" });
-  result("QA1_DIARY_BACKEND_PERSISTENCE_AFTER_RELOAD");
-  const hasCreatedAt = typeof saved.createdAt === "string" && Number.isFinite(Date.parse(saved.createdAt));
-  const activeEntries = ownEntries.filter((entry) => !entry.isActive);
-  const sortedEntries = [...activeEntries].sort((a, b) => {
-    const aTime = a.createdAt ? Date.parse(a.createdAt) : 0;
-    const bTime = b.createdAt ? Date.parse(b.createdAt) : 0;
-    return bTime - aTime;
-  });
-  const visibleInFirstPage = sortedEntries.slice(0, 10).some((entry) => entry.content === marker);
-  const visible = await a.page.getByText(marker, { exact: true }).isVisible().catch(() => false);
-  if (!visible) {
-    const historyLoadError = await a.page.getByText("Не вдалося завантажити історію щоденника. Онови сторінку та спробуй ще раз.").isVisible().catch(() => false);
-    const noEntries = await a.page.getByText("У тебе поки немає записів").isVisible().catch(() => false);
-    const filteredEmpty = await a.page.getByText("За вибраними фільтрами записів немає").isVisible().catch(() => false);
-    console.log("QA1_DIARY_RELOAD_DIAGNOSTIC=" + [
-      hasCreatedAt ? "HAS_DATE" : "MISSING_DATE",
-      visibleInFirstPage ? "IN_FIRST_PAGE" : "OUTSIDE_FIRST_PAGE",
-      historyLoadError ? "LOAD_ERROR" : "NO_LOAD_ERROR",
-      noEntries ? "EMPTY_SERVER_STATE" : "NO_EMPTY_SERVER_STATE",
-      filteredEmpty ? "EMPTY_FILTER_STATE" : "NO_EMPTY_FILTER_STATE",
-    ].join("_"));
-    throw new Error("QA1_DIARY_SAVE_NOT_VISIBLE_AFTER_RELOAD");
-  }
-  result("QA1_DIARY_PERSISTENCE_AFTER_RELOAD");
-
-  const otherEntries = await diaries(b.context);
-  requireStage(otherEntries.every((entry) => entry.content !== marker), "QA2_CAN_READ_QA1_PRIVATE_DIARY");
-  result("QA1_QA2_PRIVATE_DIARY_ISOLATION");
+  await a.page.getByText(marker, { exact: true }).waitFor({ timeout: 16000 })
+    .catch(() => { throw new Error("QA1_DIARY_NOT_VISIBLE_AFTER_RELOAD"); });
+  result("QA1_DIARY_VISIBLE_AFTER_RELOAD");
 }
 
 async function cleanupQaEntry(actor, marker) {
@@ -214,7 +197,8 @@ async function cleanupQaEntry(actor, marker) {
       );
       requireStage([200, 204].includes(archived.status()), "QA_DIARY_CLEANUP_ARCHIVE_FAILED");
     }
-    result("QA1_DIARY_TEST_NOTE_ARCHIVED");
+    if (matches.length > 0) result("QA1_DIARY_TEST_NOTE_ARCHIVED");
+    else console.log("QA1_DIARY_NO_TEST_NOTE_TO_ARCHIVE");
   } catch {
     console.error("QA1_DIARY_TEST_NOTE_CLEANUP_FAILED");
     process.exitCode = 1;
@@ -223,39 +207,22 @@ async function cleanupQaEntry(actor, marker) {
 
 async function main() {
   requireStage(process.env.DZVIN_DEV_ORIGIN === SITE, "DEV_ORIGIN_NOT_ALLOWLISTED");
-  // This final qualification is strictly read-only; earlier QA1 write probes are
-  // tracked separately while their save-acknowledgment issue is investigated.
+  requireStage(process.env.E2E_ALLOW_QA1_DIARY_WRITE === "1", "TEST_WRITE_NOT_AUTHORIZED");
   requireStage(ACTUAL_ACCOUNTS[0].email?.toLowerCase() === "qa1@qdip.ai", "QA1_ACCOUNT_MISMATCH");
   requireStage(ACTUAL_ACCOUNTS[1].email?.toLowerCase() === "qa2@qdip.ai", "QA2_ACCOUNT_MISMATCH");
   requireStage(ACTUAL_ACCOUNTS.every((u) => typeof u.password === "string" && u.password.length > 0), "QA_TEST_CREDENTIALS_NOT_CONFIGURED");
   const browser = await chromium.launch();
   let qa1, qa2;
+  const marker = "dzvin-b2c-qa-" + Date.now().toString(36);
   try {
     qa1 = await login(browser, ACTUAL_ACCOUNTS[0]);
     qa2 = await login(browser, ACTUAL_ACCOUNTS[1]);
     await verifyUi(qa1);
     await verifyUi(qa2);
-
-    const qa1Entries = await diaries(qa1.context);
-    const qa2Entries = await diaries(qa2.context);
-    const archivedTestEntries = qa1Entries.filter(
-      (entry) => typeof entry.content === "string"
-        && entry.content.startsWith("dzvin-b2c-qa-"),
-    );
-    requireStage(archivedTestEntries.length > 0, "QA1_ISOLATION_FIXTURE_MISSING");
-    requireStage(
-      archivedTestEntries.every((entry) => entry.isActive === true),
-      "QA1_PREVIOUS_TEST_ENTRY_NOT_ARCHIVED",
-    );
-    requireStage(
-      qa2Entries.every((entry) => archivedTestEntries.every(
-        (own) => own.id !== entry.id && own.content !== entry.content,
-      )),
-      "QA2_CAN_READ_QA1_PRIVATE_DIARY",
-    );
-    result("QA1_QA2_ARCHIVED_PRIVATE_DIARY_ISOLATION");
-    result("DZVIN_B2C_REAL_TWO_ACCOUNT_READ_ONLY_ACCEPTANCE");
+    await writeVerifyAndIsolate(qa1, qa2, marker);
+    result("DZVIN_B2C_REAL_TWO_ACCOUNT_ACCEPTANCE");
   } finally {
+    await cleanupQaEntry(qa1, marker);
     await qa2?.context.close();
     await qa1?.context.close();
     await browser.close();
