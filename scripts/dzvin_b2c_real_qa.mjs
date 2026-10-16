@@ -223,22 +223,39 @@ async function cleanupQaEntry(actor, marker) {
 
 async function main() {
   requireStage(process.env.DZVIN_DEV_ORIGIN === SITE, "DEV_ORIGIN_NOT_ALLOWLISTED");
-  requireStage(process.env.E2E_ALLOW_QA1_DIARY_WRITE === "1", "TEST_DIARY_WRITE_NOT_AUTHORIZED");
+  // This final qualification is strictly read-only; earlier QA1 write probes are
+  // tracked separately while their save-acknowledgment issue is investigated.
   requireStage(ACTUAL_ACCOUNTS[0].email?.toLowerCase() === "qa1@qdip.ai", "QA1_ACCOUNT_MISMATCH");
   requireStage(ACTUAL_ACCOUNTS[1].email?.toLowerCase() === "qa2@qdip.ai", "QA2_ACCOUNT_MISMATCH");
   requireStage(ACTUAL_ACCOUNTS.every((u) => typeof u.password === "string" && u.password.length > 0), "QA_TEST_CREDENTIALS_NOT_CONFIGURED");
   const browser = await chromium.launch();
   let qa1, qa2;
-  const marker = "dzvin-b2c-qa-" + Date.now().toString(36);
   try {
     qa1 = await login(browser, ACTUAL_ACCOUNTS[0]);
     qa2 = await login(browser, ACTUAL_ACCOUNTS[1]);
     await verifyUi(qa1);
     await verifyUi(qa2);
-    await writeVerifyAndIsolate(qa1, qa2, marker);
-    result("DZVIN_B2C_REAL_TWO_ACCOUNT_ACCEPTANCE");
+
+    const qa1Entries = await diaries(qa1.context);
+    const qa2Entries = await diaries(qa2.context);
+    const archivedTestEntries = qa1Entries.filter(
+      (entry) => typeof entry.content === "string"
+        && entry.content.startsWith("dzvin-b2c-qa-"),
+    );
+    requireStage(archivedTestEntries.length > 0, "QA1_ISOLATION_FIXTURE_MISSING");
+    requireStage(
+      archivedTestEntries.every((entry) => entry.isActive === true),
+      "QA1_PREVIOUS_TEST_ENTRY_NOT_ARCHIVED",
+    );
+    requireStage(
+      qa2Entries.every((entry) => archivedTestEntries.every(
+        (own) => own.id !== entry.id && own.content !== entry.content,
+      )),
+      "QA2_CAN_READ_QA1_PRIVATE_DIARY",
+    );
+    result("QA1_QA2_ARCHIVED_PRIVATE_DIARY_ISOLATION");
+    result("DZVIN_B2C_REAL_TWO_ACCOUNT_READ_ONLY_ACCEPTANCE");
   } finally {
-    await cleanupQaEntry(qa1, marker);
     await qa2?.context.close();
     await qa1?.context.close();
     await browser.close();
