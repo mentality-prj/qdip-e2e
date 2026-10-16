@@ -1,0 +1,53 @@
+name: Dzvin B2C real QA1 QA2 acceptance
+
+on:
+  push:
+    branches:
+      - test/dzvin-b2c-real-qa-20261016
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dzvin-b2c-real-qa-20261016
+  cancel-in-progress: false
+
+jobs:
+  b2c-qa:
+    if: github.repository == 'qdip-ai/qdip-e2e' && github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      CI: 'true'
+      DZVIN_DEV_ORIGIN: https://mentality-web.vercel.app
+      E2E_EXPECTED_DEV_SHA: 1cf3abf10a147262b83c56851ad064fbe64266d7
+      E2E_ALLOW_QA1_DIARY_WRITE: '1'
+      QDIP_E2E_ZITADEL_TEST1_LOGIN: ${{ secrets.QDIP_E2E_ZITADEL_TEST1_LOGIN }}
+      QDIP_E2E_ZITADEL_TEST1_PASSWORD: ${{ secrets.QDIP_E2E_ZITADEL_TEST1_PASSWORD }}
+      QDIP_E2E_ZITADEL_TEST2_LOGIN: ${{ secrets.QDIP_E2E_ZITADEL_TEST2_LOGIN }}
+      QDIP_E2E_ZITADEL_TEST2_PASSWORD: ${{ secrets.QDIP_E2E_ZITADEL_TEST2_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate one-shot B2C QA source
+        run: node --check scripts/dzvin_b2c_real_qa.mjs
+      - name: Install isolated Chromium runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/dzvin-b2c-qa
+          cp scripts/dzvin_b2c_real_qa.mjs /tmp/dzvin-b2c-qa/
+          cd /tmp/dzvin-b2c-qa
+          npm init -y >/dev/null
+          npm install --no-save --ignore-scripts @playwright/test@1.57.0
+          npx playwright install --with-deps chromium
+      - name: Verify B2C routes, QA1 diary persistence and QA2 data isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /tmp/dzvin-b2c-qa
+          node dzvin_b2c_real_qa.mjs
