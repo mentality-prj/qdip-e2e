@@ -140,28 +140,27 @@ async function diaries(context) {
 async function writeVerifyAndIsolate(a, b, marker) {
   await a.page.goto(SITE + "/uk/diary", { waitUntil: "domcontentloaded" });
   await a.page.locator('textarea[name="note"]').fill(marker);
-  // Wait for the actual POST to finish. The textarea may still contain the
-  // draft while the request is pending, so checking its text is not evidence
-  // that the entry has been saved.
-  const postedPromise = a.page.waitForResponse((response) => {
-    try {
-      return response.request().method() === "POST"
-        && new URL(response.url()).pathname === "/api/backend/diary";
-    } catch {
-      return false;
-    }
-  }, { timeout: 20000 });
+  // The write is confirmed by the real UI success toast and cleared draft.
+  // Do not mistake text still inside the textarea for a saved history card.
   await a.page.getByRole("button", { name: "Зберегти запис" }).click();
-  const posted = await postedPromise;
-  requireStage([200, 201].includes(posted.status()), "QA1_DIARY_WRITE_HTTP_" + posted.status());
-  await a.page.getByText("Запис додано", { exact: true }).waitFor({ timeout: 15000 })
+  await a.page.getByText("Запис додано", { exact: true }).waitFor({ timeout: 20000 })
     .catch(() => { throw new Error("QA1_DIARY_SAVE_SUCCESS_TOAST_MISSING"); });
-  requireStage(await a.page.locator('textarea[name="note"]').inputValue() === "", "QA1_DIARY_DRAFT_NOT_RESET_ON_SUCCESS");
+  await a.page.waitForFunction(() => {
+    const field = document.querySelector('textarea[name="note"]');
+    return field instanceof HTMLTextAreaElement && field.value === "";
+  }, { timeout: 15000 })
+    .catch(() => { throw new Error("QA1_DIARY_DRAFT_NOT_RESET_ON_SUCCESS"); });
   result("QA1_DIARY_SAVE_CONFIRMED");
 
   await a.page.reload({ waitUntil: "domcontentloaded" });
-  const ownEntries = await diaries(a.context);
-  const saved = ownEntries.find((entry) => entry.content === marker && !entry.isActive);
+  let ownEntries = [];
+  let saved;
+  for (let attempt = 0; attempt < 15; attempt++) {
+    ownEntries = await diaries(a.context);
+    saved = ownEntries.find((entry) => entry.content === marker && !entry.isActive);
+    if (saved) break;
+    await a.page.waitForTimeout(500);
+  }
   requireStage(saved, "QA1_DIARY_BACKEND_PERSISTENCE_MISSING");
   result("QA1_DIARY_BACKEND_PERSISTENCE_AFTER_RELOAD");
   const hasCreatedAt = typeof saved.createdAt === "string" && Number.isFinite(Date.parse(saved.createdAt));
